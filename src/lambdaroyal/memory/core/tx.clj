@@ -29,8 +29,7 @@
   "returns true iff the collection [coll] contains a tuple with the user key [key]"
   [coll key]
   (let [f (find-first coll key)]
-    (and f (= key (-> f first first))))
-)
+    (and f (= key (-> f first first)))))
 
 (defprotocol Constraint
   ""
@@ -63,22 +62,26 @@
       (alter data assoc unique-key (ref value))
       (process-constraints :insert postcommit coll key value))))
 
-(defn delete [tx coll-name key]
+(defn delete
   "deletes a document by key [key] from collection with name [coll-name] using the transaction [tx]. the transaction can be created from context using (create-tx [context]. returns number of removed items)"
+  [tx coll-name key]
   {:pre [(contains? (-> tx :context deref) coll-name)]}
   (let [ctx (-> tx :context deref)
         coll (get ctx coll-name)
         data (:data coll)
-        sub (subseq (-> coll :data deref) >= (create-unique-key key))]
-    (let [tuples-to-delete (map first (take-while #(= key (first %)) sub))]
+        sub (subseq @data >= (create-unique-key key))]
+    (let [tuples-to-delete (take-while #(= key (-> % first first)) sub)]
       (doseq [x tuples-to-delete]
         (process-constraints :delete precommit coll key (last x))
-        (alter data dissoc key)
+        (alter data dissoc (first x))
         (process-constraints :delete postcommit coll key (last x)))
       (count tuples-to-delete))))
 
-
-
+(defn coll-empty? 
+  "returns true iff the collection with name [coll-name] is empty"
+  [tx coll-name]
+  {:pre [(contains? (-> tx :context deref) coll-name)]}
+  (-> (get (-> tx :context deref) coll-name) :data deref empty?))
 
 
 

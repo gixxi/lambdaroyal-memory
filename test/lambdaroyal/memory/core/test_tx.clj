@@ -49,9 +49,21 @@
     (fact "all threads finished" (float (last bulk)) => (Math/floor (/ (* threads (dec threads)) 2)))
     (fact "max time for 10000 parallel inserts is 1000ms" (first bulk) => (roughly 0 1000))))
 
-
-
-
+(let [ctx (create-context meta-model)
+      tx (create-tx ctx)]
+  (facts "check delete and coll-empty?"
+    (dosync
+     (insert tx :order :a {:type :test})
+     (insert tx :order :b {:type :pro}))
+    (fact "after insert the collection is not empty"
+      (coll-empty? tx :order) => falsey))
+  
+  (fact "removing successfully 1 item must return 1" (dosync (delete tx :order :a)) => 1)
+  (fact "removing successfully 1 item must return 1" (dosync (delete tx :order :b)) => 1)
+  (fact "removing twice the same item must not work" (dosync (delete tx :order :b)) => 0)
+  (fact "removing non existing item must not work" (dosync (delete tx :order :foo)) => 0)
+  (fact "after removing all the list must be empty"
+    (coll-empty? tx :order) => truthy))
 
 
 
