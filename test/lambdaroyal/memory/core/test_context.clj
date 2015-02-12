@@ -1,7 +1,7 @@
 (ns lambdaroyal.memory.core.test-context
   (require [midje.sweet :refer :all]
            [lambdaroyal.memory.core.context :refer :all])
-  (import (lambdaroyal.memory.core.tx.UniqueKeyConstraint))
+  (import [lambdaroyal.memory.core.tx Constraint])
   (:gen-class))
 
 (def meta-model
@@ -29,12 +29,8 @@
         first 
         (filter 
          (fn [[k v]] (if-let [constraint (-> v :constraints deref :unique-key)]
-                       (instance? lambdaroyal.memory.core.tx.UniqueKeyConstraint constraint)))
+                       (instance? Constraint constraint)))
          @ctx))) => #{:order :part-order})))
-
-
-
-
 
 
 

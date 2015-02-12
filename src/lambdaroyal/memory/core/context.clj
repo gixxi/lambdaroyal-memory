@@ -1,18 +1,31 @@
 (ns lambdaroyal.memory.core.context
-  (import [lambdaroyal.memory.core.tx UniqueKeyConstraint])
+  (require [lambdaroyal.memory.core.tx :refer :all])
   (:gen-class))
 
 (defn- create-collection [collection]
   (let [fn-constraint-factory (fn [collection]
                                 (if (:unique collection)
-                                  {:unique-key (UniqueKeyConstraint.)}
+                                  {:unique-key (create-unique-key-constraint)}
                                   {}))]
     
-    {:data (ref (sorted-map))
+    {:running (ref (bigint 0))
+     :name (:name collection)
+     :data (ref (sorted-map))
      :constraints (ref (fn-constraint-factory collection))}))
 
 (defn create-context [meta-model]
-  (ref (zipmap (keys meta-model) (map #(create-collection %) (vals meta-model)))))
+  (ref (zipmap (keys meta-model) (map #(create-collection %) 
+                                      (map #(assoc %1 :name %2) (vals meta-model) (keys meta-model))))))
+
+
+
+
+
+
+
+
+
+
 
 
 
