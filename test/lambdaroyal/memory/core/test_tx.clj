@@ -4,8 +4,7 @@
            [lambdaroyal.memory.core.context :refer :all]
            [lambdaroyal.memory.core.test-context :refer [meta-model]]
            [lambdaroyal.memory.helper :refer :all])
-  (import [lambdaroyal.memory.core ConstraintException])
-  (:gen-class))
+  (import [lambdaroyal.memory.core ConstraintException]))
 
 
 (facts "check insert into collection with unique key constraint"

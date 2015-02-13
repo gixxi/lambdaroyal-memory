@@ -5,4 +5,5 @@
             :url "http://www.gnu.org/copyleft/gpl.html"}
   :dependencies [[org.clojure/clojure "1.7.0-alpha5"]
                  [org.clojure/core.typed "0.2.77"]]
-  :profiles {:dev {:dependencies [[midje "1.6.3"]]}})
+  :profiles {:dev {:dependencies [[midje "1.6.3"]]}}
+  :aot :all)

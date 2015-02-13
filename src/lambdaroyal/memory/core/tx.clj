@@ -1,6 +1,7 @@
 (ns lambdaroyal.memory.core.tx
   (:require (lambdaroyal.memory.core))
-  (:import (lambdaroyal.memory.core ConstraintException)))
+  (:import (lambdaroyal.memory.core ConstraintException))
+  (:gen-class))
 
 (defn create-tx [context]
   {:context context})
@@ -83,7 +84,11 @@
   {:pre [(contains? (-> tx :context deref) coll-name)]}
   (-> (get (-> tx :context deref) coll-name) :data deref empty?))
 
-
+(defn coll-count
+  "returns the number of elements in a collection with name [coll-name]"
+  [tx coll-name]
+  {:pre [(contains? (-> tx :context deref) coll-name)]}
+  (-> (get (-> tx :context deref) coll-name) :data deref count))
 
 
 
