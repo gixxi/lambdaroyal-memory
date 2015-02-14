@@ -64,6 +64,29 @@
   (fact "after removing all the list must be empty"
     (coll-empty? tx :order) => truthy))
 
+(let [ctx (create-context meta-model)
+      tx (create-tx ctx)
+      counter (ref 0)]
+  (facts "check select-first, select, delete-by-select and inserting to non-unique collections"
+    (dosync
+     (doall (repeatedly 1000 #(insert tx :order (alter counter inc) {:orell :meisi :anne :iben})))
+     (doall (repeatedly 2 #(insert tx :interaction 1 {})))
+     (fact "select first on existing must work"
+       (select-first tx :order 500) => [500 {:orell :meisi :anne :iben}])
+     (fact "select all elements must reveal all elements"
+       (count (select tx :order >= -10)) => 1000)
+     (fact "select all but the first elements ..."
+       (count (select tx :order > 1)) => 999)
+     (fact "select subset ..."
+       (count (select tx :order >= 500 < 700)) => 200)
+     (doseq [i (select tx :order >= 500 < 700)]
+       (delete tx :order (first i)))
+     (fact "delete-by-select must reveal intersection"
+       (count (select tx :order > 0)) => 800))))
+
+
+
+
 
 
 

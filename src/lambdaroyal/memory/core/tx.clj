@@ -18,10 +18,10 @@
   ([coll key]
    [key (alter (:running coll) inc)])
   ([key]
-   [key (bigint 0)]))
+   [key (bigint 1)]))
 
 (defn find-first 
-  "returns true iff the collection [coll] contains a tuple with the user key [key]"
+  "returns the first raw key/value pair whose key is equal to the user key [key]"
   [coll key]
   (let [sub (subseq (-> coll :data deref) >= (create-unique-key key))]
     (first sub)))
@@ -89,6 +89,28 @@
   [tx coll-name]
   {:pre [(contains? (-> tx :context deref) coll-name)]}
   (-> (get (-> tx :context deref) coll-name) :data deref count))
+
+(defn select-first
+  "returns the first user key/value pair of the collection [coll-name] that matches the key [key] or nil"
+  [tx coll-name key]
+  {:pre [(contains? (-> tx :context deref) coll-name)]}
+  (if-let [f (find-first (get (-> tx :context deref) coll-name) key)]
+    [(-> f first first) (-> f last deref)]))
+
+(defn select
+  "test(s) one of <, <=, > or
+>=. Returns a seq of those entries [user key, value] with keys ek for
+which (test (.. sc comparator (compare ek key)) 0) is true"
+  ([tx coll-name start-test start-key]
+  {:pre [(contains? (-> tx :context deref) coll-name)]}
+  (let [sub (subseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test (create-unique-key start-key))]
+    (map (fn [[[uk i] v]] [uk @v]) sub)))
+
+  ([tx coll-name start-test start-key stop-test stop-key]
+  {:pre [(contains? (-> tx :context deref) coll-name)]}
+  (let [sub (subseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test (create-unique-key start-key) stop-test (create-unique-key stop-key))]
+    (map (fn [[[uk i] v]] [uk @v]) sub))))
+
 
 
 
