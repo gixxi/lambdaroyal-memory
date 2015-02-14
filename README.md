@@ -49,10 +49,13 @@ The metamodel states the subsequently given facts on the elements of the
 conceptual data model
 
 * collection
-** name of the collection
-** unique constraint
-** further functional constraints
-** indexes per collection
+
+where collection is a tuple of 
+
+* name of the collection
+* unique constraint
+* further functional constraints
+* indexes per collection
 
 * index
 ** name (unique with respect to all indexes of that collection)
