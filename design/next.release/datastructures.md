@@ -9,3 +9,11 @@ Furthermore the index serves as speed-up for selecting data based on data attrib
 ### Indexes are functional
 
 Indexes do not directly refer to atomic attributes of data but to a a comparator function that takes two data items into account and can act on arbitrary attributes or relations between them of that very data.
+
+### How is a Index used within a transaction
+
+####Invariant
+
+No matter whether what the constraint contract part of the index is executed whenever a user alters a STM ref of a value that is supported by indexes.
+
+Technically indexes are watchdog functions to the STM refs of values.
