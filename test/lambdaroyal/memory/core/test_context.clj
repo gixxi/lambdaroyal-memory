@@ -11,7 +11,17 @@
    :part-order
    {:unique true :indexes []}
    :interaction
-   {}})
+   {:indexes []}})
+
+(def meta-model-with-indexes
+  {
+   :order
+   {:unique true :indexes [{:name :client :unique false :attributes [[:client]]}]}
+   :part-order
+   {:unique true :indexes []}
+   :interaction
+   {:indexes [{:attribues [[:keyword]]}]}})
+
 
 (facts "facts about the created context"
   (let [ctx (create-context meta-model)]
