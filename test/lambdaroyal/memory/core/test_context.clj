@@ -16,7 +16,8 @@
 (def meta-model-with-indexes
   {
    :order
-   {:unique true :indexes [{:name :client :unique false :attributes [[:client]]}]}
+   {:unique true :indexes [{:name :client :unique false :attributes [[:client]]}
+                           {:name :client-no :unique false :attributes [[:client] [:no]]}]}
    :part-order
    {:unique true :indexes []}
    :interaction

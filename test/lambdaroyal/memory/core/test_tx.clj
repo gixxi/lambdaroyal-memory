@@ -88,24 +88,40 @@
   (let [ctx (create-context meta-model-with-indexes)
         tx (create-tx ctx)
         _ (dosync
-           (insert tx :order :a {:type :test}))
-        _ (dosync
-           (insert tx :order :b {:type :pro}))
-        _ (-> ctx deref :order :data deref println)
-        _ (println (find-first (-> ctx deref :order) :b))]
-    (fact "can insert value at all"
-      (contains-key? (-> ctx deref :order) :a) => truthy)
-    (fact "can insert a second value at all"
-      (contains-key? (-> ctx deref :order) :b) => truthy)
-    (fact "can not insert on existing key within a new transaction"
-      (dosync
-       (insert tx :order :a {})) => (throws ConstraintException))
-    (fact "two inserts in one transaction are treated atomically"
-      (dosync
-       (insert tx :order :c {})
-       (insert tx :order :c {})) => (throws ConstraintException #".+?unique key constraint violated.*"))))
-
-
+           (doseq [i (range 1000)]
+             (insert tx :order i {:type :test :keyword i :client (mod i 2) :number i})))
+        idx-client (-> ctx deref :order :constraints deref :client)
+        idx-client-no (-> ctx deref :order :constraints deref :client-no)
+        timed-find (timed
+                    (.find idx-client >= [0] < [1])) 
+        timed-select (timed
+                      (doall
+                       (filter #(= (-> % last deref) 0) (select tx :order >= 0))))
+        _ (println "time for find 500 of 1000 using index" (first timed-find))
+        _ (println "time for filter 500 of 1000" (first timed-select))]
+    (fact "index :client must be present" idx-client => truthy)
+    (fact "index :client-no must be present" idx-client-no => truthy)
+    (fact "index :client is applicable on search attributes '(:client)"
+      (.applicable? idx-client '(:client)) => truthy)
+    (fact "index :client is applicable on search attributes [:client]"
+      (.applicable? idx-client [:client]) => truthy)
+    (fact "index :client is applicable on search attributes [:foo]"
+      (.applicable? idx-client [:foo]) => falsey)
+    (fact "index :client-no is applicable on search attributes [:client]"
+      (.applicable? idx-client-no [:client]) => truthy)
+    (fact "index :client-no is applicable on search attributes [:client :no]"
+      (.applicable? idx-client-no [:client :no]) => truthy)
+    (fact "index :client-no is applicable on search attributes [:client]"
+      (.applicable? idx-client-no [:no :client]) => falsey)
+    (fact "index :client reveals 500 entries"
+      (count (.find idx-client >= [0] < [1])) => 500)
+    (fact "finding using index must outperform non-index filter"
+      (< (first timed-find)
+         (first timed-select))
+      => truthy)
+    (fact "find and select must reveal the same items"
+      (= (-> timed-find last count)
+         (-> timed-select last count)))))
 
 
 

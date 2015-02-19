@@ -40,7 +40,9 @@
 (defprotocol Index
   ""
   (find [this start-test start-key stop-test stop-key]
-    "takes all values from the collection using this index that fulfil (start-test start-key) until the collection is fully realized or (stop-test stop-key) is fulfilled. start-test as well as stop-test are of >,>=,<,<=. The returning sequence contains of items [[uk i] (ref v)], where uk is the user-key, i is the running index for the collection and (ref v) denotes a STM reference type instance to the value v"))
+    "takes all values from the collection using this index that fulfil (start-test start-key) until the collection is fully realized or (stop-test stop-key) is fulfilled. start-test as well as stop-test are of >,>=,<,<=. The returning sequence contains of items [[uk i] (ref v)], where uk is the user-key, i is the running index for the collection and (ref v) denotes a STM reference type instance to the value v")
+  (applicable? [this key]
+    "return true iff this index can be used to find values as per the given key."))
 
 (defn- attribute-values 
   "returns a vector of all attribute values as per the attributes [attributes] for the value within coll-tuple <- [[k i] (ref value)]"
@@ -49,24 +51,31 @@
 
 (deftype
     ^{:doc"A index implementation that is defined over a set of comparable attributes. The attributes are given as per the access keys that refer to the attributes to be indexed"}
-  AttributeIndex [this unique attributes]
-  Index
-  (find [this start-test start-key stop-test stop-key]
-    (let [this (.this this)]
-      (map last (subseq (-> this :data deref) start-test (create-unique-key start-key) stop-test (create-unique-key stop-key)))))
-  Constraint
-  (application [this] #{:insert :delete})
-  (precommit [this ctx coll key value]
-    (let [this (.this this) 
-          user-key (attribute-values value attributes)
-          unique-key (create-unique-key this user-key)]
-      (if (and unique (contains? this user-key))
-        (throw (create-constraint-exception coll key (format "unique index constraint violated on index %s when precommit value %s" attributes value))))))
-  (postcommit [this ctx coll coll-tuple]
-    (let [this (.this this)
-          user-key (attribute-values (-> coll-tuple last deref) attributes)
-          unique-key (create-unique-key this user-key)]
-      (commute (:data this) assoc unique-key coll-tuple))))
+    AttributeIndex [this unique attributes]
+    Index
+    (find [this start-test start-key stop-test stop-key]
+      (let [this (.this this)]
+        (map last (subseq (-> this :data deref) start-test (create-unique-key start-key) stop-test (create-unique-key stop-key)))))
+    (applicable? [this key]
+      (and
+       (sequential? key)
+       (>= (-> this .attributes count) (count key))
+       (not-empty (take-while true?
+                              (map (fn [[a b]] (= a b))
+                                   (map list (.attributes this) key))))))
+    Constraint
+    (application [this] #{:insert :delete})
+    (precommit [this ctx coll key value]
+      (let [this (.this this) 
+            user-key (attribute-values value attributes)
+            unique-key (create-unique-key this user-key)]
+        (if (and unique (contains? this user-key))
+          (throw (create-constraint-exception coll key (format "unique index constraint violated on index %s when precommit value %s" attributes value))))))
+    (postcommit [this ctx coll coll-tuple]
+      (let [this (.this this)
+            user-key (attribute-values (-> coll-tuple last deref) attributes)
+            unique-key (create-unique-key this user-key)]
+        (commute (:data this) assoc unique-key coll-tuple))))
 
 (defn create-attribute-index 
   "creates an attribute index for attributes a"
@@ -139,17 +148,17 @@
 
 (defn select
   "test(s) one of <, <=, > or
->=. Returns a seq of those entries [user key, value] with keys ek for
-which (test (.. sc comparator (compare ek key)) 0) is true"
+  >=. Returns a seq of those entries [user key, value] with keys ek for
+  which (test (.. sc comparator (compare ek key)) 0) is true"
   ([tx coll-name start-test start-key]
-  {:pre [(contains? (-> tx :context deref) coll-name)]}
-  (let [sub (subseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test (create-unique-key start-key))]
-    (map (fn [[[uk i] v]] [uk v]) sub)))
+   {:pre [(contains? (-> tx :context deref) coll-name)]}
+   (let [sub (subseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test (create-unique-key start-key))]
+     (map (fn [[[uk i] v]] [uk v]) sub)))
 
   ([tx coll-name start-test start-key stop-test stop-key]
-  {:pre [(contains? (-> tx :context deref) coll-name)]}
-  (let [sub (subseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test (create-unique-key start-key) stop-test (create-unique-key stop-key))]
-    (map (fn [[[uk i] v]] [uk v]) sub))))
+   {:pre [(contains? (-> tx :context deref) coll-name)]}
+   (let [sub (subseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test (create-unique-key start-key) stop-test (create-unique-key stop-key))]
+     (map (fn [[[uk i] v]] [uk v]) sub))))
 
 
 
