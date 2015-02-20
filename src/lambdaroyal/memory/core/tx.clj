@@ -13,6 +13,9 @@
 (defn create-constraint-exception [coll key msg]
   (lambdaroyal.memory.core.ConstraintException. (format "Lambdaroyal-Memory Constraint Exception while handling key [%s] for collection [%s]: %s" key (:name coll) msg)))
 
+(defn create-no-applicable-index-exception [coll key]
+  (lambdaroyal.memory.core.ConstraintException. (format "Lambdaroyal-Memory No applicable index defined for key %s on collection [%s]" key (:name coll))))
+
 (defn create-unique-key 
   "creates a unique key [key running] from a user space key using the running bigint index"
   ([coll key]
@@ -86,6 +89,12 @@
    unique
    a))
 
+(defn applicable-indexes [coll key]
+  (filter 
+   #(.applicable? % key)
+   (filter
+    #(satisfies? Index %) (map last (-> coll :constraints deref)))))
+
 (defn create-unique-key-constraint []
   (reify
     Constraint
@@ -158,10 +167,16 @@
   ([tx coll-name start-test start-key stop-test stop-key]
    {:pre [(contains? (-> tx :context deref) coll-name)]}
    (let [sub (subseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test (create-unique-key start-key) stop-test (create-unique-key stop-key))]
-     (map (fn [[[uk i] v]] [uk v]) sub))))
+     (map (fn [[[uk i] v]] [uk v]) sub)))
 
-
-
+  ([tx coll-name attributes start-test start-key stop-test stop-key]
+   {:pre [(contains? (-> tx :context deref) coll-name)]}
+   (let [coll (get (-> tx :context deref) coll-name)
+         indexes (applicable-indexes coll attributes)
+         _ (println indexes)]
+     (if-let [index (first indexes)]
+       (.find index start-test start-key stop-test stop-key)
+       (throw (create-no-applicable-index-exception coll attributes))))))
 
 
 

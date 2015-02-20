@@ -94,11 +94,16 @@
         idx-client-no (-> ctx deref :order :constraints deref :client-no)
         timed-find (timed
                     (.find idx-client >= [0] < [1])) 
+        timed-auto-find (timed
+                         (select tx :order [:client] >= [0] < [1]))
+        timed-auto-find (timed
+                         (select tx :order [:client] >= [0] < [1]))
         timed-select (timed
                       (doall
                        (filter #(= (-> % last deref) 0) (select tx :order >= 0))))
         _ (println "time for find 500 of 1000 using index" (first timed-find))
-        _ (println "time for filter 500 of 1000" (first timed-select))]
+        _ (println "time for filter 500 of 1000" (first timed-select))
+        _ (println "time for auto-select 500 of 1000" (first timed-auto-find))]
     (fact "index :client must be present" idx-client => truthy)
     (fact "index :client-no must be present" idx-client-no => truthy)
     (fact "index :client is applicable on search attributes '(:client)"
@@ -115,10 +120,13 @@
       (.applicable? idx-client-no [:no :client]) => falsey)
     (fact "index :client reveals 500 entries"
       (count (.find idx-client >= [0] < [1])) => 500)
-    (fact "finding using index must outperform non-index filter"
-      (< (first timed-find)
+    (fact "finding using index must outperform non-index filter by factor 10"
+      (< (* 10 (first timed-find))
          (first timed-select))
       => truthy)
+    (fact "finding using auto-selected index must outperform non-index filter by factor 10"
+      (< (* 10 (first timed-auto-find))
+         (first timed-select)))
     (fact "find and select must reveal the same items"
       (= (-> timed-find last count)
          (-> timed-select last count)))))
