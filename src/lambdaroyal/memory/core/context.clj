@@ -10,16 +10,17 @@
         fn-index-factory (fn [collection]
                            (reduce
                             (fn [acc index]
-                              (assoc acc 
-                                (or (:name index) (gensym))
-                                (let [{:keys [unique attributes]} index]
-                                  (create-attribute-index unique (map first attributes)))))
+                              (let [name (or (:name index) (gensym))]
+                                (assoc acc 
+                                  name
+                                  (let [{:keys [unique attributes]} index]
+                                    (create-attribute-index name unique (map first attributes))))))
                             {}
                             (:indexes collection)))]
     
     {:running (ref (bigint 0))
      :name (:name collection)
-     :data (ref (sorted-map))
+     :data (ref (sorted-map))f
      :constraints (ref (merge (fn-index-factory collection) (fn-constraint-factory collection)))}))
 
 (defn create-context [meta-model]

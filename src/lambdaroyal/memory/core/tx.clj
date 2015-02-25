@@ -36,8 +36,8 @@
     (and f (= key (-> f first first)))))
 
 (defprotocol Constraint
-  (precommit [this ctx coll key value] "This function gets called before a key/value pair is inserted to/updated within a collection. Implementing this function if a necessary precondition needs to be checked before performing an costly update to the underlying datastructure holding the key/value pair. Implementations should raise. Here ctx aims to handle constraint to need to check on other collections as well")
-  (postcommit [this ctx coll coll-tuple] "This function gets called after a key/value pair is inserted to/updated within a collection. Constraint like indexes implement this for the update of the very index after the update to the key/value pair data structure took place")
+  (precommit [this ctx coll application key value] "This function gets called before a key/value pair is inserted to/updated within a collection. Implementing this function if a necessary precondition needs to be checked before performing an costly update to the underlying datastructure holding the key/value pair. Implementations should raise. Here ctx aims to handle constraint to need to check on other collections as well")
+  (postcommit [this ctx coll application coll-tuple] "This function gets called after a key/value pair is inserted to/updated within a collection. Constraint like indexes implement this for the update of the very index after the update to the key/value pair data structure took place")
   (application [this] "returns a set of database actions this constraint type is relevant for"))
 
 (defprotocol Index
@@ -54,7 +54,7 @@
 
 (deftype
     ^{:doc"A index implementation that is defined over a set of comparable attributes. The attributes are given as per the access keys that refer to the attributes to be indexed"}
-    AttributeIndex [this unique attributes]
+    AttributeIndex [this name unique attributes]
     Index
     (find [this start-test start-key stop-test stop-key]
       (let [this (.this this)]
@@ -68,24 +68,27 @@
                                    (map list (.attributes this) key))))))
     Constraint
     (application [this] #{:insert :delete})
-    (precommit [this ctx coll key value]
+    (precommit [this ctx coll application key value]
       (let [this (.this this) 
             user-key (attribute-values value attributes)
             unique-key (create-unique-key this user-key)]
         (if (and unique (contains? this user-key))
           (throw (create-constraint-exception coll key (format "unique index constraint violated on index %s when precommit value %s" attributes value))))))
-    (postcommit [this ctx coll coll-tuple]
+    (postcommit [this ctx coll application coll-tuple]
       (let [this (.this this)
-            user-key (attribute-values (-> coll-tuple last deref) attributes)
+            user-value (-> coll-tuple last deref)
+            user-key (attribute-values user-value attributes)
             unique-key (create-unique-key this user-key)]
+        (commute (-> coll-tuple last meta :idx-keys) assoc name user-key)
         (commute (:data this) assoc unique-key coll-tuple))))
 
 (defn create-attribute-index 
   "creates an attribute index for attributes a"
-  [unique a]
+  [name unique a]
   {:pre (sequential? a)}
   (AttributeIndex. 
    {:running (ref (bigint 0)) :data (ref (sorted-map))}
+   name
    unique
    a))
 
@@ -98,15 +101,21 @@
 (defn create-unique-key-constraint []
   (reify
     Constraint
-    (precommit [this ctx coll key value] 
+    (precommit [this ctx coll application key value] 
       (if (contains-key? coll key)
         (throw (create-constraint-exception coll key "unique key constraint violated" ))))
-    (postcommit [this ctx coll coll-tuple] nil)
+    (postcommit [this ctx coll application coll-tuple] nil)
     (application [this] #{:insert})))
 
 (defn process-constraints [application f ctx coll & attr]
   (doseq [c (filter #(contains? (.application %) application) (-> coll :constraints deref vals))]
-    (apply f c ctx coll attr)))
+    (apply f c ctx coll application attr)))
+
+(defn- value-wrapper
+  "takes a value [user-value] to be stored into the database and returns a respective STM ref with meta-data attached used for reverse index key handling. this map denotes key/value pairs, where key is the name of a index refering the inserted user-value as well as value denotes the key within this very index"
+  [user-value]
+  (ref user-value :meta {:idx-keys (ref {})}))
+
 
 (defn insert [tx coll-name key value]
   "inserts a document [value] by key [key] into collection with name [coll-name] using the transaction [tx]. the transaction can be created from context using (create-tx [context])"
@@ -115,7 +124,7 @@
         coll (get ctx coll-name)
         data (:data coll)
         unique-key (create-unique-key coll key)
-        coll-tuple [unique-key (ref value)]]
+        coll-tuple [unique-key (value-wrapper value)]]
     (do
       (process-constraints :insert precommit ctx coll key value)
       (alter data assoc unique-key (last coll-tuple))
@@ -148,26 +157,33 @@
   {:pre [(contains? (-> tx :context deref) coll-name)]}
   (-> (get (-> tx :context deref) coll-name) :data deref count))
 
+(defn- user-scope-tuple 
+  "within a collection a key-value-pair consists of k -> r, where k is [uk i], r is a STM reference to document v, uk
+  is the key the user used to store document v. i is a running index that allows
+  the uk being non-unique with respect to the collection. since v is wrapped by an STM reference we provide back the _raw_ value v in order to prevent the user from altering the value using STM mechanism directly, since this would bypass the secondary indexes and make them invalid."
+  [[k r]]
+  [k @r])
+
 (defn select-first
-  "returns the first user key/value pair of the collection [coll-name] that matches the key [key] or nil"
+  "returns the first key/value pair of the collection [coll-name] that matches the key [key] or nil"
   [tx coll-name key]
   {:pre [(contains? (-> tx :context deref) coll-name)]}
   (if-let [f (find-first (get (-> tx :context deref) coll-name) key)]
-    [(-> f first first) (last f)]))
+    (user-scope-tuple f)))
 
 (defn select
   "test(s) one of <, <=, > or
-  >=. Returns a seq of those entries [user key, value] with keys ek for
+  >=. Returns a seq of those entries [key, value] with keys ek for
   which (test (.. sc comparator (compare ek key)) 0) is true"
   ([tx coll-name start-test start-key]
    {:pre [(contains? (-> tx :context deref) coll-name)]}
    (let [sub (subseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test (create-unique-key start-key))]
-     (map (fn [[[uk i] v]] [uk v]) sub)))
+     (map user-scope-tuple sub)))
 
   ([tx coll-name start-test start-key stop-test stop-key]
    {:pre [(contains? (-> tx :context deref) coll-name)]}
    (let [sub (subseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test (create-unique-key start-key) stop-test (create-unique-key stop-key))]
-     (map (fn [[[uk i] v]] [uk v]) sub)))
+     (map user-scope-tuple sub)))
 
   ([tx coll-name attributes start-test start-key stop-test stop-key]
    {:pre [(contains? (-> tx :context deref) coll-name)]}

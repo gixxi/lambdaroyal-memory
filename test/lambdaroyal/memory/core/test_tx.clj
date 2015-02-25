@@ -72,7 +72,7 @@
      (doall (repeatedly 1000 #(insert tx :order (alter counter inc) {:orell :meisi :anne :iben})))
      (doall (repeatedly 2 #(insert tx :interaction 1 {})))
      (fact "select first on existing must work"
-       (-> (select-first tx :order 500) last deref) => {:orell :meisi :anne :iben})
+       (-> (select-first tx :order 500) last) => {:orell :meisi :anne :iben})
      (fact "select all elements must reveal all elements"
        (count (select tx :order >= -10)) => 1000)
      (fact "select all but the first elements ..."
@@ -80,7 +80,7 @@
      (fact "select subset ..."
        (count (select tx :order >= 500 < 700)) => 200)
      (doseq [i (select tx :order >= 500 < 700)]
-       (delete tx :order (first i)))
+       (delete tx :order (-> i first first)))
      (fact "delete-by-select must reveal intersection"
        (count (select tx :order > 0)) => 800))))
 
@@ -96,11 +96,12 @@
                     (.find idx-client >= [0] < [1])) 
         timed-auto-find (timed
                          (select tx :order [:client] >= [0] < [1]))
-        timed-auto-find (timed
-                         (select tx :order [:client] >= [0] < [1]))
         timed-select (timed
                       (doall
-                       (filter #(= (-> % last deref) 0) (select tx :order >= 0))))
+                       (filter #(= (-> % last :client) 0) (select tx :order >= 0))))
+        _ (println "count for timed-find" (-> timed-find last count))
+        _ (println "count for timed-auto-find" (-> timed-auto-find last count))
+        _ (println "count for select" (-> timed-select last count))
         _ (println "time for find 500 of 1000 using index" (first timed-find))
         _ (println "time for filter 500 of 1000" (first timed-select))
         _ (println "time for auto-select 500 of 1000" (first timed-auto-find))]
@@ -128,11 +129,23 @@
       (< (* 10 (first timed-auto-find))
          (first timed-select)))
     (fact "find and select must reveal the same items"
-      (= (-> timed-find last count)
-         (-> timed-select last count)))))
+      (-> timed-find last count) =>
+      (-> timed-select last count))
+    (fact "find and auto-find must reveal the same items"
+      (-> timed-find last count) =>
+      (-> timed-auto-find last count))))
 
 
-
+(facts "altering indexed elements"
+  (let [ctx (create-context meta-model-with-indexes)
+        tx (create-tx ctx)
+        _ (dosync
+           (doseq [i (range 10)]
+             (insert tx :order i {:type :test :keyword i :client (mod i 2) :number i})))
+        _ (println ctx)
+        r (select tx :order [:client] >= [0] < [3])
+        _ (println :r r)]
+    (fact "can find item at all" r => truthy)))
 
 
 
