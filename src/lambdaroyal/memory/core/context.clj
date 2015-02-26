@@ -20,7 +20,7 @@
     
     {:running (ref (bigint 0))
      :name (:name collection)
-     :data (ref (sorted-map))f
+     :data (ref (sorted-map))
      :constraints (ref (merge (fn-index-factory collection) (fn-constraint-factory collection)))}))
 
 (defn create-context [meta-model]

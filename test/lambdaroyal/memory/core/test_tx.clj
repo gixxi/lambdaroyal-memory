@@ -6,6 +6,47 @@
            [lambdaroyal.memory.helper :refer :all])
   (import [lambdaroyal.memory.core ConstraintException]))
 
+(facts "check core multimethods find-first/contains-key?"
+  (let [ctx (create-context meta-model)
+        tx (create-tx ctx)
+        _ (dosync
+           (insert tx :order :a {:type :test})
+           (insert tx :order :b {:type :pro}))
+        coll (-> ctx deref :order)
+        tuple-a-by-user-key (find-first coll :a)
+        tuple-a-by-key (find-first coll (first tuple-a-by-user-key))]
+    (fact "find-first by user key reveals an element"
+      tuple-a-by-user-key => truthy)
+    (fact "find-first by user key reveals the proper element"
+      (-> tuple-a-by-user-key user-scope-tuple last) => {:type :test})
+    (fact "find-first by key reveals an element"
+      tuple-a-by-key => truthy)
+    (fact "find-first by key reveals the proper element"
+      tuple-a-by-key => tuple-a-by-user-key)
+    (fact "contains-key? by user key reveals element"
+      (contains-key? coll :a) => truthy)
+    (fact "contains-key? by key reveals element"
+      (contains-key? coll (first tuple-a-by-key)) => truthy)))
+
+(facts "check multimethod delete"
+  (let [ctx (create-context meta-model)
+        tx (create-tx ctx)
+        _ (dosync
+           (insert tx :order :a {:type :test})
+           (insert tx :order :b {:type :pro}))
+        coll (-> ctx deref :order)
+        tuple-a-by-user-key (find-first coll :a)
+        tuple-a-by-key (find-first coll (first tuple-a-by-user-key))
+        _ (println :tuple-by-unique-key tuple-a-by-key)
+        _ (println :tuple-by-user-key tuple-a-by-user-key)]
+    (fact "delete by user key the first time succeeds"
+      (dosync (delete tx :order :b)) => 1)
+    (fact "delete by user key the second time fails"
+      (dosync (delete tx :order :b)) => 0)
+    (fact "delete by unique key the first time succeeds"
+      (dosync (delete tx :order (first tuple-a-by-key))) => 1)
+    (fact "delete by unique key the first time fails"
+      (dosync (delete tx :order (first tuple-a-by-key))) => 0)))
 
 (facts "check insert into collection with unique key constraint"
   (let [ctx (create-context meta-model)
@@ -13,9 +54,7 @@
         _ (dosync
            (insert tx :order :a {:type :test}))
         _ (dosync
-           (insert tx :order :b {:type :pro}))
-        _ (-> ctx deref :order :data deref println)
-        _ (println (find-first (-> ctx deref :order) :b))]
+           (insert tx :order :b {:type :pro}))]
     (fact "can insert value at all"
       (contains-key? (-> ctx deref :order) :a) => truthy)
     (fact "can insert a second value at all"
@@ -142,10 +181,10 @@
         _ (dosync
            (doseq [i (range 10)]
              (insert tx :order i {:type :test :keyword i :client (mod i 2) :number i})))
-        _ (println ctx)
         r (select tx :order [:client] >= [0] < [3])
         _ (println :r r)]
     (fact "can find item at all" r => truthy)))
+
 
 
 

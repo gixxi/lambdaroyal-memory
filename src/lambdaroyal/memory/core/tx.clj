@@ -19,21 +19,38 @@
 (defn create-unique-key 
   "creates a unique key [key running] from a user space key using the running bigint index"
   ([coll key]
-   [key (alter (:running coll) inc)])
+   (with-meta [key (alter (:running coll) inc)] {:unique-key true}))
   ([key]
    [key (bigint 1)]))
 
-(defn find-first 
-  "returns the first raw key/value pair whose key is equal to the user key [key]"
+(defn- is-unique-key? [key]
+  (let [m (meta key)]
+    (or (and m
+             (-> m :unique-key true?)) false)))
+
+(defmulti find-first "returns the first collection tuple whose key is equal to the user key [key]. This multimethod supports both user keys as well as unique keys as inputs. this is not a userscope method." (fn [coll key] (is-unique-key? key)))
+
+(defmethod find-first false
   [coll key]
   (let [sub (subseq (-> coll :data deref) >= (create-unique-key key))]
     (first sub)))
 
-(defn contains-key?
-  "returns true iff the collection [coll] contains a tuple with the user key [key]"
+(defmethod find-first true
+  [coll key]
+  (if-let [v (get (-> coll :data deref) key)]
+    [key v]))
+
+(defmulti contains-key? "returns true iff the collection [coll] contains a tuple whose key is equal to the user key [key]. This multimethod supports both user keys as well as unique keys as inputs." (fn [coll key] (is-unique-key? key)))
+
+(defmethod contains-key? false
   [coll key]
   (let [f (find-first coll key)]
     (and f (= key (-> f first first)))))
+
+(defmethod contains-key? true
+  [coll key]
+  (contains? (-> coll :data deref) key))
+
 
 (defprotocol Constraint
   (precommit [this ctx coll application key value] "This function gets called before a key/value pair is inserted to/updated within a collection. Implementing this function if a necessary precondition needs to be checked before performing an costly update to the underlying datastructure holding the key/value pair. Implementations should raise. Here ctx aims to handle constraint to need to check on other collections as well")
@@ -45,7 +62,9 @@
   (find [this start-test start-key stop-test stop-key]
     "takes all values from the collection using this index that fulfil (start-test start-key) until the collection is fully realized or (stop-test stop-key) is fulfilled. start-test as well as stop-test are of >,>=,<,<=. The returning sequence contains of items [[uk i] (ref v)], where uk is the user-key, i is the running index for the collection and (ref v) denotes a STM reference type instance to the value v")
   (applicable? [this key]
-    "return true iff this index can be used to find values as per the given key."))
+    "return true iff this index can be used to find values as per the given key.")
+  (rating [this key]
+    "returns a natural number denoting an order by which two indexes can be compared in order to use one for a finding a certain key. the index with the lower rating result wins"))
 
 (defn- attribute-values 
   "returns a vector of all attribute values as per the attributes [attributes] for the value within coll-tuple <- [[k i] (ref value)]"
@@ -66,6 +85,8 @@
        (not-empty (take-while true?
                               (map (fn [[a b]] (= a b))
                                    (map list (.attributes this) key))))))
+    (rating [this key]
+      (count attributes))
     Constraint
     (application [this] #{:insert :delete})
     (precommit [this ctx coll application key value]
@@ -93,10 +114,11 @@
    a))
 
 (defn applicable-indexes [coll key]
-  (filter 
-   #(.applicable? % key)
-   (filter
-    #(satisfies? Index %) (map last (-> coll :constraints deref)))))
+  (sort-by #(.rating % key)
+           (filter 
+            #(.applicable? % key)
+            (filter
+             #(satisfies? Index %) (map last (-> coll :constraints deref))))))
 
 (defn create-unique-key-constraint []
   (reify
@@ -130,8 +152,11 @@
       (alter data assoc unique-key (last coll-tuple))
       (process-constraints :insert postcommit ctx coll coll-tuple))))
 
-(defn delete
-  "deletes a document by key [key] from collection with name [coll-name] using the transaction [tx]. the transaction can be created from context using (create-tx [context]. returns number of removed items)"
+(defmulti delete 
+  "deletes a document by key [key] from collection with name [coll-name] using the transaction [tx]. the transaction can be created from context using (create-tx [context]. returns number of removed items. works both with user keys as well as unique keys)"
+  (fn [tx coll-name key] (is-unique-key? key)))
+
+(defmethod delete false
   [tx coll-name key]
   {:pre [(contains? (-> tx :context deref) coll-name)]}
   (let [ctx (-> tx :context deref)
@@ -145,6 +170,22 @@
         (process-constraints :delete postcommit ctx coll x))
       (count tuples-to-delete))))
 
+(defn- user-key [k]
+  (first k))
+
+(defmethod delete true
+  [tx coll-name key]
+  {:pre [(contains? (-> tx :context deref) coll-name)]}
+  (let [ctx (-> tx :context deref)
+        coll (get ctx coll-name)
+        data (:data coll)]
+    (if-let [x (get @data key)]
+      (do
+        (process-constraints :delete precommit ctx coll (user-key key) x)
+        (alter data dissoc key)
+        (process-constraints :delete postcommit ctx coll [key x])
+        1) 0)))
+
 (defn coll-empty? 
   "returns true iff the collection with name [coll-name] is empty"
   [tx coll-name]
@@ -157,7 +198,7 @@
   {:pre [(contains? (-> tx :context deref) coll-name)]}
   (-> (get (-> tx :context deref) coll-name) :data deref count))
 
-(defn- user-scope-tuple 
+(defn user-scope-tuple 
   "within a collection a key-value-pair consists of k -> r, where k is [uk i], r is a STM reference to document v, uk
   is the key the user used to store document v. i is a running index that allows
   the uk being non-unique with respect to the collection. since v is wrapped by an STM reference we provide back the _raw_ value v in order to prevent the user from altering the value using STM mechanism directly, since this would bypass the secondary indexes and make them invalid."
@@ -188,11 +229,15 @@
   ([tx coll-name attributes start-test start-key stop-test stop-key]
    {:pre [(contains? (-> tx :context deref) coll-name)]}
    (let [coll (get (-> tx :context deref) coll-name)
-         indexes (applicable-indexes coll attributes)
-         _ (println indexes)]
+         indexes (applicable-indexes coll attributes)]
      (if-let [index (first indexes)]
        (.find index start-test start-key stop-test stop-key)
        (throw (create-no-applicable-index-exception coll attributes))))))
+
+
+
+
+
 
 
 
