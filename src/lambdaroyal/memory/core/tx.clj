@@ -16,6 +16,16 @@
 (defn create-no-applicable-index-exception [coll key]
   (lambdaroyal.memory.core.ConstraintException. (format "Lambdaroyal-Memory No applicable index defined for key %s on collection [%s]" key (:name coll))))
 
+(defn- value-wrapper
+  "takes a value [user-value] to be stored into the database and returns a respective STM ref with meta-data attached used for reverse index key handling. this map denotes key/value pairs, where key is the name of a index refering the inserted user-value as well as value denotes the key within this very index"
+  [user-value]
+  (ref user-value :meta {:idx-keys (ref {})}))
+
+(defn- get-idx-keys
+  "takes a value-wrapper into account, that is the wrapper around the user value that is inserted into the database and returns the STM ref to the reverse lookup map from the index name to the key that refers this value-wrapper within this very index"
+  [value-wrapper]
+  (-> value-wrapper meta :idx-keys))
+
 (defn create-unique-key 
   "creates a unique key [key running] from a user space key using the running bigint index"
   ([coll key]
@@ -90,18 +100,28 @@
     Constraint
     (application [this] #{:insert :delete})
     (precommit [this ctx coll application key value]
-      (let [this (.this this) 
-            user-key (attribute-values value attributes)
-            unique-key (create-unique-key this user-key)]
-        (if (and unique (contains? this user-key))
-          (throw (create-constraint-exception coll key (format "unique index constraint violated on index %s when precommit value %s" attributes value))))))
+      (if (= :insert application)
+        (let [this (.this this) 
+              user-key (attribute-values value attributes)
+              unique-key (create-unique-key this user-key)]
+          (if (and unique (contains? this user-key))
+            (throw (create-constraint-exception coll key (format "unique index constraint violated on index %s when precommit value %s" attributes value)))))))
     (postcommit [this ctx coll application coll-tuple]
-      (let [this (.this this)
-            user-value (-> coll-tuple last deref)
-            user-key (attribute-values user-value attributes)
-            unique-key (create-unique-key this user-key)]
-        (commute (-> coll-tuple last meta :idx-keys) assoc name user-key)
-        (commute (:data this) assoc unique-key coll-tuple))))
+      (cond
+       (= :insert application)
+       (let [this (.this this)
+             user-value (-> coll-tuple last deref)
+             user-key (attribute-values user-value attributes)
+             unique-key (create-unique-key this user-key)]
+         (alter (-> coll-tuple last get-idx-keys) assoc name unique-key)
+         (alter (:data this) assoc unique-key coll-tuple))
+         (= :delete application)
+         (if coll-tuple
+           (let [this (.this this) 
+                 idx-keys (-> coll-tuple last get-idx-keys)]
+             (if-let [idx-key (get @idx-keys name)]
+               (alter (:data this) dissoc idx-key)
+               (throw (RuntimeException. (format "FATAL RUNTIME EXCEPTION: index %s is inconsistent, failed to remove key %s from value-wrapper %s. Failed to reverse lookup index key." name coll-tuple)))))))))
 
 (defn create-attribute-index 
   "creates an attribute index for attributes a"
@@ -132,12 +152,6 @@
 (defn process-constraints [application f ctx coll & attr]
   (doseq [c (filter #(contains? (.application %) application) (-> coll :constraints deref vals))]
     (apply f c ctx coll application attr)))
-
-(defn- value-wrapper
-  "takes a value [user-value] to be stored into the database and returns a respective STM ref with meta-data attached used for reverse index key handling. this map denotes key/value pairs, where key is the name of a index refering the inserted user-value as well as value denotes the key within this very index"
-  [user-value]
-  (ref user-value :meta {:idx-keys (ref {})}))
-
 
 (defn insert [tx coll-name key value]
   "inserts a document [value] by key [key] into collection with name [coll-name] using the transaction [tx]. the transaction can be created from context using (create-tx [context])"

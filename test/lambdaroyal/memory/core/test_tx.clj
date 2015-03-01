@@ -174,16 +174,22 @@
       (-> timed-find last count) =>
       (-> timed-auto-find last count))))
 
-
 (facts "altering indexed elements"
   (let [ctx (create-context meta-model-with-indexes)
         tx (create-tx ctx)
         _ (dosync
-           (doseq [i (range 10)]
-             (insert tx :order i {:type :test :keyword i :client (mod i 2) :number i})))
-        r (select tx :order [:client] >= [0] < [3])
-        _ (println :r r)]
-    (fact "can find item at all" r => truthy)))
+           (insert tx :order 1 {:type :test :keyword "gaga" :client 1 :no 2})
+           (insert tx :order 2 {:type :test :keyword "gaga" :client 2 :no 2})
+)
+        idx-client (-> ctx deref :order :constraints deref :client)
+        idx-client-no (-> ctx deref :order :constraints deref :client-no)] 
+    (fact "can find item at all using index 1" (first (select tx :order [:client] >= [1] < [2])) => truthy)
+    (fact "can find item at all using index 2" (first (select tx :order [:client :number] >= [1 2] < [1 3])) => truthy)
+    (dosync
+     (delete tx :order 1))
+    (fact "must not find item at all using index 1 after removal" (first (select tx :order [:client] >= [1] < [2])) => falsey)
+    (fact "must not find item at all using index 2 after removal" (first (select tx :order [:client :number] >= [1 2] < [1 3])) => falsey)))
+
 
 
 
