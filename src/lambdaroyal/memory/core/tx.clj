@@ -166,27 +166,42 @@
       (alter data assoc unique-key (last coll-tuple))
       (process-constraints :insert postcommit ctx coll coll-tuple))))
 
+
+(defn- alter-index
+  [idx coll-tuple old-user-value new-user-value]
+  (let [old-attribute-values (attribute-values old-user-value (.attributes idx))
+        new-attribute-values (attribute-values new-user-value (.attributes idx))]
+    (if 
+        (not= 0 (compare old-attribute-values new-attribute-values))
+      (let [idx-keys (-> coll-tuple last get-idx-keys)]
+        (if-let [idx-key (get @idx-keys (.name idx))]
+          (let [new-unique-index-key (create-unique-key (.this idx) new-attribute-values)]
+            (do
+              ;;remove old index tuple
+              (alter (-> idx .this :data) dissoc idx-key)
+              ;;add new index tuple
+              (alter (-> idx .this :data) assoc new-unique-index-key coll-tuple)
+              ;;alter reverse lookup
+              (alter idx-keys assoc (.name idx) new-unique-index-key)
+              (comment (println (.name idx) :old old-user-value :new new-user-value :old-a old-attribute-values :new-a new-attribute-values :idx-keys idx-keys))
+              ))
+          (throw (RuntimeException. (format "FATAL RUNTIME EXCEPTION: index %s is inconsistent, failed to remove key %s from value-wrapper %s. Failed to reverse lookup index key." name coll-tuple))))))))
+
 (defn alter-document
   "alters a document given by [user-scope-tuple] within the collection denoted by [coll-name] by applying the function [fn] with the parameters [args] to it. An user-scope-tuple can be obtained using find-first, find and select"
- [tx coll-name user-scope-tuple fn & args]
+  [tx coll-name user-scope-tuple fn & args]
   {:pre [(contains? (-> tx :context deref) coll-name)]}
   (let [ctx (-> tx :context deref)
         coll (get ctx coll-name)
-        ref (find-first coll (first user-scope-tuple))
-        _ (if (ref? val) 
-            (throw (create-constraint-exception coll key "cannot alter document since document is not present in the collection" )))))
-        
+        coll-tuple (find-first coll (first user-scope-tuple))
+        _ (if (nil? coll-tuple) 
+            (throw (create-constraint-exception coll key "cannot alter document since document is not present in the collection" )))
+        old-user-value (last user-scope-tuple)
         idxs (filter
               #(satisfies? Index %) (map last (-> coll :constraints deref)))
-        current-user-value (last user-scope-tuple)
-        current-idxs-attr (map #(attribute-values current-user-value (.attributes %) idxs))
-        new-user-value (alter ref fn args)
-        new-idxs-attr (map #(attribute-values current-user-value (.attributes %) idxs))]
-    (do
-      (doall
-       (map (fn [idx old new]
-              (if
-                  (not= old new))))))))
+        new-user-value (apply alter (last coll-tuple) fn args)]
+    (doseq [idx idxs]
+      (alter-index idx coll-tuple old-user-value new-user-value))))
 
 (defmulti delete 
   "deletes a document by key [key] from collection with name [coll-name] using the transaction [tx]. the transaction can be created from context using (create-tx [context]. returns number of removed items. works both with user keys as well as unique keys)"

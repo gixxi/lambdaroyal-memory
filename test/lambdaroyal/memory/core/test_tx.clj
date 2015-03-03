@@ -174,7 +174,8 @@
       (-> timed-find last count) =>
       (-> timed-auto-find last count))))
 
-(facts "altering indexed elements"
+
+(facts "inserting and removing elements from an index-backed collection must alter back the index as well"
   (let [ctx (create-context meta-model-with-indexes)
         tx (create-tx ctx)
         _ (dosync
@@ -189,6 +190,32 @@
      (delete tx :order 1))
     (fact "must not find item at all using index 1 after removal" (first (select tx :order [:client] >= [1] < [2])) => falsey)
     (fact "must not find item at all using index 2 after removal" (first (select tx :order [:client :number] >= [1 2] < [1 3])) => falsey)))
+
+(facts "altering indexed elements"
+  (let [ctx (create-context meta-model-with-indexes)
+        tx (create-tx ctx)
+        _ (dosync
+           (insert tx :order 1 {:type :test :keyword "gaga" :client 1 :no 2})
+           (insert tx :order 2 {:type :test :keyword "gaga" :client 2 :no 2})
+           )
+        idx-client (-> ctx deref :order :constraints deref :client)
+        idx-client-no (-> ctx deref :order :constraints deref :client-no)
+        order-1 (select-first tx :order 1)]
+    (dosync
+     (alter-document tx :order order-1 assoc :a :b))
+    (fact "can find item at all using index 1" (first (select tx :order [:client] >= [1] < [2])) => truthy)
+    (fact "can find item at all using index 2" (first (select tx :order [:client :number] >= [1 2] < [1 3])) => truthy)
+    (dosync (alter-document tx :order order-1 assoc :client 3))
+    (fact "must not find item at all using index 1 after altering the document" (first (select tx :order [:client] >= [1] < [2])) => falsey)
+    (fact "must not find item at all using index 2 after altering the document" (first (select tx :order [:client :number] >= [1 2] < [1 3])) => falsey)
+    (fact "can find item using index 1 using changed predicates" (first (select tx :order [:client] >= [3] < [4])) => truthy)
+    (fact "can find item using index 2 using changed predicates" (first (select tx :order [:client :number] >= [3 2] < [4 3])) => truthy)
+    (dosync (alter-document tx :order order-1 assoc :no 5))
+    (fact "must not find item using index 2 using changed predicates" (first (select tx :order [:client :number] >= [3 2] < [3 3])) => falsey)
+    (fact "must not find item using index 2 using changed predicates" (first (select tx :order [:client :number] >= [3 3] < [3 6])) => truthy)))
+  
+
+
 
 
 
