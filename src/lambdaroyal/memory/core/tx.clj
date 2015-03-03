@@ -166,6 +166,28 @@
       (alter data assoc unique-key (last coll-tuple))
       (process-constraints :insert postcommit ctx coll coll-tuple))))
 
+(defn alter-document
+  "alters a document given by [user-scope-tuple] within the collection denoted by [coll-name] by applying the function [fn] with the parameters [args] to it. An user-scope-tuple can be obtained using find-first, find and select"
+ [tx coll-name user-scope-tuple fn & args]
+  {:pre [(contains? (-> tx :context deref) coll-name)]}
+  (let [ctx (-> tx :context deref)
+        coll (get ctx coll-name)
+        ref (find-first coll (first user-scope-tuple))
+        _ (if (ref? val) 
+            (throw (create-constraint-exception coll key "cannot alter document since document is not present in the collection" )))))
+        
+        idxs (filter
+              #(satisfies? Index %) (map last (-> coll :constraints deref)))
+        current-user-value (last user-scope-tuple)
+        current-idxs-attr (map #(attribute-values current-user-value (.attributes %) idxs))
+        new-user-value (alter ref fn args)
+        new-idxs-attr (map #(attribute-values current-user-value (.attributes %) idxs))]
+    (do
+      (doall
+       (map (fn [idx old new]
+              (if
+                  (not= old new))))))))
+
 (defmulti delete 
   "deletes a document by key [key] from collection with name [coll-name] using the transaction [tx]. the transaction can be created from context using (create-tx [context]. returns number of removed items. works both with user keys as well as unique keys)"
   (fn [tx coll-name key] (is-unique-key? key)))
