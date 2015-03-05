@@ -26,17 +26,28 @@
   [value-wrapper]
   (-> value-wrapper meta :idx-keys))
 
-(defn create-unique-key 
-  "creates a unique key [key running] from a user space key using the running bigint index"
-  ([coll key]
-   (with-meta [key (alter (:running coll) inc)] {:unique-key true}))
-  ([key]
-   [key (bigint 1)]))
 
 (defn- is-unique-key? [key]
   (let [m (meta key)]
     (or (and m
              (-> m :unique-key true?)) false)))
+
+(defn create-unique-key 
+  "creates a unique key [key running] from a user space key using the running bigint index"
+  ([coll key]
+   (if (is-unique-key? key)
+     key
+     (with-meta [key (alter (:running coll) inc)] {:unique-key true})))
+  ([key]
+   (if (is-unique-key? key)
+     key
+     [key (bigint 1)])))
+
+(defn- stage-next-unique-key
+  "returns the next key that would be used for the collection [coll] and the given user key [key]. this can be used to return bounded subsets that match only those 
+   documents associated with the user key [key]"
+  [coll key]
+  (with-meta [key (-> coll :running deref inc)] {:unique-key true}))
 
 (defmulti find-first "returns the first collection tuple whose key is equal to the user key [key]. This multimethod supports both user keys as well as unique keys as inputs. this is not a userscope method." (fn [coll key] (is-unique-key? key)))
 
@@ -60,7 +71,6 @@
 (defmethod contains-key? true
   [coll key]
   (contains? (-> coll :data deref) key))
-
 
 (defprotocol Constraint
   (precommit [this ctx coll application key value] "This function gets called before a key/value pair is inserted to/updated within a collection. Implementing this function if a necessary precondition needs to be checked before performing an costly update to the underlying datastructure holding the key/value pair. Implementations should raise. Here ctx aims to handle constraint to need to check on other collections as well")
@@ -86,8 +96,10 @@
     AttributeIndex [this name unique attributes]
     Index
     (find [this start-test start-key stop-test stop-key]
-      (let [this (.this this)]
-        (map last (subseq (-> this :data deref) start-test (create-unique-key start-key) stop-test (create-unique-key stop-key)))))
+      (let [this (.this this)
+            start-key (create-unique-key start-key)
+            stop-key (create-unique-key stop-key)]
+        (map last (subseq (-> this :data deref) start-test start-key stop-test stop-key))))
     (applicable? [this key]
       (and
        (sequential? key)
@@ -140,11 +152,18 @@
             (filter
              #(satisfies? Index %) (map last (-> coll :constraints deref))))))
 
+(defn select-from-coll [coll attributes start-test start-key stop-test stop-key]
+  (let [indexes (applicable-indexes coll attributes)]
+    (if-let [index (first indexes)]
+      (.find index start-test start-key stop-test stop-key)
+      (throw (create-no-applicable-index-exception coll attributes)))))
+
+
 (deftype
     ^{:doc "The child (foreign key) part of the referential integrity constraint that checks during insert and alterations of documents refering a referenced/parent document"}
     ReferrerIntegrityConstraint [this name foreign-coll foreign-key]
   Constraint
-  (application [this] #{:insert :delete})
+  (application [this] #{:insert :update})
   (precommit [this ctx coll application key value]
     {:pre [(contains? ctx foreign-coll)]}
     (let [foreign-coll (get ctx foreign-coll)]
@@ -162,6 +181,27 @@
    name
    foreign-coll
    foreign-key))
+
+(deftype
+    ^{:doc "The referenced/parent (primary key) part of the referential integrity constraint that checks during deleting of a documents whether it is referenced by another document"}
+    ReferencedIntegrityConstraint [this name referencing-coll referencing-key]
+  Constraint
+  (application [this] #{:delete})
+  (precommit [this ctx coll application key value]
+    {:pre [(contains? ctx referencing-coll)]}
+    (let [;;select the referencee using the automatically generated index on the referencing-key
+          subs (select-from-coll (get ctx referencing-coll) [referencing-key] >= [key] < (stage-next-unique-key (get ctx referencing-coll) [key]))]
+        (if-not (empty? subs)
+          (throw (create-constraint-exception coll key (format "referenced integrity constraint violated. a document with key %s within collection %s references this document" referencing-coll referencing-key))))))
+  (postcommit [this ctx coll application coll-tuple] nil))
+
+(defn create-referenced-integrity-constraint 
+  [name referencing-coll referencing-key]
+  (ReferencedIntegrityConstraint. 
+   {}
+   name
+   referencing-coll
+   referencing-key))
 
 (defn create-unique-key-constraint []
   (reify
@@ -311,12 +351,8 @@
 
   ([tx coll-name attributes start-test start-key stop-test stop-key]
    {:pre [(contains? (-> tx :context deref) coll-name)]}
-   (let [coll (get (-> tx :context deref) coll-name)
-         indexes (applicable-indexes coll attributes)]
-     (if-let [index (first indexes)]
-       (.find index start-test start-key stop-test stop-key)
-       (throw (create-no-applicable-index-exception coll attributes))))))
-
+   (let [coll (get (-> tx :context deref) coll-name)]
+     (select-from-coll coll attributes start-test start-key stop-test stop-key))))
 
 
 

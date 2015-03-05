@@ -1,8 +1,7 @@
 (ns lambdaroyal.memory.core.test-context
   (require [midje.sweet :refer :all]
            [lambdaroyal.memory.core.context :refer :all])
-  (import [lambdaroyal.memory.core.tx Constraint])
-  (:gen-class))
+  (import [lambdaroyal.memory.core.tx Constraint]))
 
 (def meta-model
   {
@@ -53,7 +52,7 @@
          @ctx))) => #{:order :part-order})))
 
 (facts "facts abount context creation with referential integrity constraints (RIC)"
-  (let [rics (map #(-> % last .name) (referential-integrity-constraint-factory meta-model-with-ric))
+  (let [rics (map (fn [[coll constraint]] [coll constraint]) (referential-integrity-constraint-factory meta-model-with-ric))
         ctx (create-context meta-model-with-ric)]
     (fact "creating a context from a meta-model" ctx -> truthy)
     (let [ric (-> @ctx :part-order :constraints deref :order)]
@@ -68,11 +67,6 @@
       (fact "RIC key is correct" (.foreign-key ric) => :type))
     (let [ric (-> @ctx :order :constraints deref :order)]
       (fact "RIC is not duplicated falsey" ric => falsey))))
-
-
-
-
-
 
 
 

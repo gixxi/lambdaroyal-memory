@@ -237,7 +237,24 @@
        (alter-document tx :part-order (select-first tx :part-order 1) assoc :type 2)) => (throws ConstraintException #".+?integrity constraint violated.*"))
     (fact "part-order must be unchanged after transaction failed"
       (-> (select-first tx :part-order 1) last :type) => 1)
-))
+    (fact "must not delete order with referencing part orders"
+      (dosync
+       (delete tx :order 1)) => (throws ConstraintException #".+?integrity constraint violated.*"))
+    (fact "must not delete type with referencing part orders"
+      (dosync
+       (delete tx :type 1)) => (throws ConstraintException #".+?integrity constraint violated.*"))
+    (dosync 
+     (delete tx :part-order 1)
+     (delete tx :part-order 2))
+    (fact "delete order without referencing part orders"
+      (dosync
+       (delete tx :order 1)) => truthy)
+    (fact "must not delete type without referencing part orders"
+      (dosync
+       (delete tx :type 1)) => truthy)))
+
+
+
 
 
 

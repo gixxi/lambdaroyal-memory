@@ -8,10 +8,10 @@
      (conj 
       acc 
       [name constraint]
-      ;;add reverse constraint - RIC on the parent/referenced collection
- 
       ;;add additional index that backs looking up referrers during deleting parent documents 
-      [name (create-attribute-index (gensym) false [(.foreign-coll constraint)])]))
+      [name (create-attribute-index (gensym) false [(.foreign-coll constraint)])]
+      ;;add reverse constraint - RIC on the parent/referenced collection
+      [(.foreign-coll constraint) (create-referenced-integrity-constraint (gensym) name (.foreign-key constraint))]))
    []
    (map
     (fn [constraint]
@@ -50,8 +50,10 @@
                     (fn-constraint-factory collection) 
                     (reduce 
                      (fn [acc [coll constraint]]
-                       (if (= (:name collection) coll)
-                         (assoc acc (.name constraint) constraint)))
+                       (if 
+                         (= (:name collection) coll)
+                         (assoc acc (.name constraint) constraint)
+                         acc))
                      {}
                      referential-integrity-constraints)))}))
 
