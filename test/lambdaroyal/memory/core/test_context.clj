@@ -23,6 +23,15 @@
    :interaction
    {:indexes [{:attribues [[:keyword]]}]}})
 
+(def meta-model-with-ric
+  {:type
+   {:unique true :indexes []}
+   :order
+   {:unique true :indexes []}
+   :part-order
+   {:unique true :indexes [] :foreign-key-constraints [
+                                                       {:name :type :foreign-coll :type :foreign-key :type}
+                                                       {:name :order :foreign-coll :order :foreign-key :order}]}})
 
 (facts "facts about the created context"
   (let [ctx (create-context meta-model)]
@@ -42,6 +51,29 @@
          (fn [[k v]] (if-let [constraint (-> v :constraints deref :unique-key)]
                        (instance? Constraint constraint)))
          @ctx))) => #{:order :part-order})))
+
+(facts "facts abount context creation with referential integrity constraints (RIC)"
+  (let [rics (map #(-> % last .name) (referential-integrity-constraint-factory meta-model-with-ric))
+        ctx (create-context meta-model-with-ric)]
+    (fact "creating a context from a meta-model" ctx -> truthy)
+    (let [ric (-> @ctx :part-order :constraints deref :order)]
+      (fact "RIC reveals" ric => truthy)
+      (fact "RIC name is correct" (.name ric) => :order)
+      (fact "RIC target coll is correct" (.foreign-coll ric) => :order)
+      (fact "RIC key is correct" (.foreign-key ric) => :order))
+    (let [ric (-> @ctx :part-order :constraints deref :type)]
+      (fact "RIC reveals" ric => truthy)
+      (fact "RIC name is correct" (.name ric) => :type)
+      (fact "RIC target coll is correct" (.foreign-coll ric) => :type)
+      (fact "RIC key is correct" (.foreign-key ric) => :type))
+    (let [ric (-> @ctx :order :constraints deref :order)]
+      (fact "RIC is not duplicated falsey" ric => falsey))))
+
+
+
+
+
+
 
 
 

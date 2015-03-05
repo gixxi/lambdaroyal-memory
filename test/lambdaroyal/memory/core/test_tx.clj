@@ -2,7 +2,7 @@
   (require [midje.sweet :refer :all]
            [lambdaroyal.memory.core.tx :refer :all]
            [lambdaroyal.memory.core.context :refer :all]
-           [lambdaroyal.memory.core.test-context :refer [meta-model meta-model-with-indexes]]
+           [lambdaroyal.memory.core.test-context :refer [meta-model meta-model-with-indexes meta-model-with-ric]]
            [lambdaroyal.memory.helper :refer :all])
   (import [lambdaroyal.memory.core ConstraintException]))
 
@@ -181,7 +181,7 @@
         _ (dosync
            (insert tx :order 1 {:type :test :keyword "gaga" :client 1 :no 2})
            (insert tx :order 2 {:type :test :keyword "gaga" :client 2 :no 2})
-)
+           )
         idx-client (-> ctx deref :order :constraints deref :client)
         idx-client-no (-> ctx deref :order :constraints deref :client-no)] 
     (fact "can find item at all using index 1" (first (select tx :order [:client] >= [1] < [2])) => truthy)
@@ -213,9 +213,31 @@
     (dosync (alter-document tx :order order-1 assoc :no 5))
     (fact "must not find item using index 2 using changed predicates" (first (select tx :order [:client :number] >= [3 2] < [3 3])) => falsey)
     (fact "must not find item using index 2 using changed predicates" (first (select tx :order [:client :number] >= [3 3] < [3 6])) => truthy)))
-  
 
-
+(facts "facts abount context creation with referential integrity constraints (RIC)"
+  (let [rics (map #(-> % last .name) (referential-integrity-constraint-factory meta-model-with-ric))
+        ctx (create-context meta-model-with-ric)
+        tx (create-tx ctx)]
+    (fact "must not insert part order with inexisting type"
+      (dosync
+       (insert tx :part-order 1 {:type 1})) => (throws ConstraintException #".+?integrity constraint violated.*"))
+    (dosync (insert tx :type 1 {}))
+    (fact "must not insert part order with inexisting order"
+      (dosync
+       (insert tx :part-order 1 {:type 1 :order 1})) => (throws ConstraintException #".+?integrity constraint violated.*"))
+    (dosync (insert tx :order 1 {:name :foo}))
+    (fact "can insert part order after ensuring foreign key constraints"
+      (dosync
+       (insert tx :part-order 1 {:type 1 :order 1})))
+    (fact "can insert part order #2 after ensuring foreign key constraints"
+      (dosync
+       (insert tx :part-order 2 {:type 1 :order 1})))
+    (fact "must not alter part order to refer a non existing type"
+      (dosync
+       (alter-document tx :part-order (select-first tx :part-order 1) assoc :type 2)) => (throws ConstraintException #".+?integrity constraint violated.*"))
+    (fact "part-order must be unchanged after transaction failed"
+      (-> (select-first tx :part-order 1) last :type) => 1)
+))
 
 
 

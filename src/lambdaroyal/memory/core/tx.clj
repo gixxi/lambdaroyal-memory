@@ -140,6 +140,29 @@
             (filter
              #(satisfies? Index %) (map last (-> coll :constraints deref))))))
 
+(deftype
+    ^{:doc "The child (foreign key) part of the referential integrity constraint that checks during insert and alterations of documents refering a referenced/parent document"}
+    ReferrerIntegrityConstraint [this name foreign-coll foreign-key]
+  Constraint
+  (application [this] #{:insert :delete})
+  (precommit [this ctx coll application key value]
+    {:pre [(contains? ctx foreign-coll)]}
+    (let [foreign-coll (get ctx foreign-coll)]
+      ;;check whether the user-value has a non-nil foreign key,
+      ;;otherwise we don't have to check at all
+      (if-let [foreign-key (get value foreign-key)]
+        (if-not (contains-key? foreign-coll foreign-key)
+          (throw (create-constraint-exception coll key (format "referrer integrity constraint violated. no document with key %s within collection %s" foreign-key (.foreign-coll this))))))))
+  (postcommit [this ctx coll application coll-tuple] nil))
+
+(defn create-referrer-integrity-constraint 
+  [name foreign-coll foreign-key]
+  (ReferrerIntegrityConstraint. 
+   {}
+   name
+   foreign-coll
+   foreign-key))
+
 (defn create-unique-key-constraint []
   (reify
     Constraint
@@ -188,7 +211,7 @@
           (throw (RuntimeException. (format "FATAL RUNTIME EXCEPTION: index %s is inconsistent, failed to remove key %s from value-wrapper %s. Failed to reverse lookup index key." name coll-tuple))))))))
 
 (defn alter-document
-  "alters a document given by [user-scope-tuple] within the collection denoted by [coll-name] by applying the function [fn] with the parameters [args] to it. An user-scope-tuple can be obtained using find-first, find and select"
+  "alters a document given by [user-scope-tuple] within the collection denoted by [coll-name] by applying the function [fn] with the parameters [args] to it. An user-scope-tuple can be obtained using find-first, find and select. returns the new user value"
   [tx coll-name user-scope-tuple fn & args]
   {:pre [(contains? (-> tx :context deref) coll-name)]}
   (let [ctx (-> tx :context deref)
@@ -197,11 +220,20 @@
         _ (if (nil? coll-tuple) 
             (throw (create-constraint-exception coll key "cannot alter document since document is not present in the collection" )))
         old-user-value (last user-scope-tuple)
+        constraints (map last (-> coll :constraints deref))
         idxs (filter
-              #(satisfies? Index %) (map last (-> coll :constraints deref)))
+              #(satisfies? Index %) constraints)
+        rics (filter
+              #(instance? ReferrerIntegrityConstraint %) constraints)
         new-user-value (apply alter (last coll-tuple) fn args)]
-    (doseq [idx idxs]
-      (alter-index idx coll-tuple old-user-value new-user-value))))
+    (do
+      ;;check all referential integrity constraints on the referrer site of the coin
+      (doseq [_ rics]
+            (.precommit _ ctx coll :update (first user-scope-tuple) new-user-value))
+      ;;alter all indexes to consider the document change
+      (doseq [idx idxs]
+        (alter-index idx coll-tuple old-user-value new-user-value))
+      new-user-value)))
 
 (defmulti delete 
   "deletes a document by key [key] from collection with name [coll-name] using the transaction [tx]. the transaction can be created from context using (create-tx [context]. returns number of removed items. works both with user keys as well as unique keys)"

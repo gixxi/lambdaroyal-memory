@@ -13,3 +13,21 @@
                     (clojure.core/- (. java.lang.System (clojure.core/nanoTime)) 
                                     ~start)) 1000000.0)]
        (list ~delay ~obj))))
+
+(defmacro futures [n & exprs]
+  (vec (for [_ (range n)
+             expr exprs]
+         `(future ~expr))))
+
+(defmacro wait-futures [& args]
+  `(doseq [f# (futures ~@args)] @f#))
+
+
+
+
+
+
+
+
+
+
