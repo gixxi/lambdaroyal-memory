@@ -40,6 +40,10 @@ other constraint like unique-constraints.
 
 ![](https://raw.githubusercontent.com/gixxi/lambdaroyal-memory/master/design/current.datastructures/abstraction.high.png)
 
+### Data Model from an Technical Point of View
+
+![](https://raw.githubusercontent.com/gixxi/lambdaroyal-memory/master/design/current.datastructures/abstraction.low.png)
+
 ## Meta Model
 
 The meta model reflects the conceptual data model in technical terms
