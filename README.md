@@ -36,6 +36,10 @@ This constraint are fundamentally speaking functional constraints,
 concrete instances are indexes to speed-up data retrival and to back
 other constraint like unique-constraints.
 
+### Data Model from an User Point of View
+
+![](https://raw.githubusercontent.com/gixxi/lambdaroyal-memory/master/design/current.datastructures/abstraction.high.png)
+
 ## Meta Model
 
 The meta model reflects the conceptual data model in technical terms
