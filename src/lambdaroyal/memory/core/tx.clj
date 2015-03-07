@@ -18,8 +18,8 @@
 
 (defn- value-wrapper
   "takes a value [user-value] to be stored into the database and returns a respective STM ref with meta-data attached used for reverse index key handling. this map denotes key/value pairs, where key is the name of a index refering the inserted user-value as well as value denotes the key within this very index"
-  [user-value]
-  (ref user-value :meta {:idx-keys (ref {})}))
+  [coll-name unique-key user-value]
+  (ref user-value :meta {:coll-name coll-name :unique-key unique-key :idx-keys (ref {})}))
 
 (defn- get-idx-keys
   "takes a value-wrapper into account, that is the wrapper around the user value that is inserted into the database and returns the STM ref to the reverse lookup map from the index name to the key that refers this value-wrapper within this very index"
@@ -223,7 +223,7 @@
         coll (get ctx coll-name)
         data (:data coll)
         unique-key (create-unique-key coll key)
-        coll-tuple [unique-key (value-wrapper value)]]
+        coll-tuple [unique-key (value-wrapper coll-name unique-key value)]]
     (do
       (process-constraints :insert precommit ctx coll key value)
       (alter data assoc unique-key (last coll-tuple))

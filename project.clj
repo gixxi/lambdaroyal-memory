@@ -6,4 +6,4 @@
   :dependencies [[org.clojure/clojure "1.7.0-alpha5"]
                  [org.clojure/core.typed "0.2.77"]]
   :profiles {:dev {:dependencies [[midje "1.6.3"]]}}
-  :aot [lambdaroyal.memory.core])
+  :aot [lambdaroyal.memory.core lambdaroyal.memory.eviction.core])
