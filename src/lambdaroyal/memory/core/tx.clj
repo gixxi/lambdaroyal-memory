@@ -1,6 +1,7 @@
 (ns lambdaroyal.memory.core.tx
   (:require (lambdaroyal.memory.core))
-  (:import (lambdaroyal.memory.core ConstraintException))
+  (:require [lambdaroyal.memory.eviction.core :as evict])
+  (:import [lambdaroyal.memory.core ConstraintException])
   (:gen-class))
 
 (defn create-tx [context]
@@ -16,10 +17,28 @@
 (defn create-no-applicable-index-exception [coll key]
   (lambdaroyal.memory.core.ConstraintException. (format "Lambdaroyal-Memory No applicable index defined for key %s on collection [%s]" key (:name coll))))
 
+(defn- evictor-watch [coll]
+  (fn [watch ref old new]
+    (if-let [evictor (-> coll :evictor)]
+      (let [_ (comment (println :evict :ref ref :meta (meta ref) :old old :new new))
+            coll-name (-> ref meta :coll-name)
+            deleted (-> ref meta :deleted)
+            unique-key (-> ref meta :unique-key)]
+        (cond
+         (nil? old) (evict/insert evictor coll-name unique-key new)
+         (-> ref meta :deleted) (evict/delete evictor coll-name unique-key)
+         :else (evict/update evictor coll-name unique-key old new))))))
+
 (defn- value-wrapper
   "takes a value [user-value] to be stored into the database and returns a respective STM ref with meta-data attached used for reverse index key handling. this map denotes key/value pairs, where key is the name of a index refering the inserted user-value as well as value denotes the key within this very index"
-  [coll-name unique-key user-value]
-  (ref user-value :meta {:coll-name coll-name :unique-key unique-key :idx-keys (ref {})}))
+  [coll unique-key user-value]
+  (let [x (ref (if (:evictor coll) nil user-value) :meta {:coll-name (:name coll) :unique-key unique-key :idx-keys (ref {})})]
+    (do 
+      (if-let [eviction-proxy (:evictor coll)]
+        (do
+          (add-watch x :evictor (evictor-watch coll))
+          (ref-set x user-value)))
+      x)))
 
 (defn- get-idx-keys
   "takes a value-wrapper into account, that is the wrapper around the user value that is inserted into the database and returns the STM ref to the reverse lookup map from the index name to the key that refers this value-wrapper within this very index"
@@ -45,7 +64,7 @@
 
 (defn- stage-next-unique-key
   "returns the next key that would be used for the collection [coll] and the given user key [key]. this can be used to return bounded subsets that match only those 
-   documents associated with the user key [key]"
+  documents associated with the user key [key]"
   [coll key]
   (with-meta [key (-> coll :running deref inc)] {:unique-key true}))
 
@@ -127,13 +146,13 @@
              unique-key (create-unique-key this user-key)]
          (alter (-> coll-tuple last get-idx-keys) assoc name unique-key)
          (alter (:data this) assoc unique-key coll-tuple))
-         (= :delete application)
-         (if coll-tuple
-           (let [this (.this this) 
-                 idx-keys (-> coll-tuple last get-idx-keys)]
-             (if-let [idx-key (get @idx-keys name)]
-               (alter (:data this) dissoc idx-key)
-               (throw (RuntimeException. (format "FATAL RUNTIME EXCEPTION: index %s is inconsistent, failed to remove key %s from value-wrapper %s. Failed to reverse lookup index key." name coll-tuple)))))))))
+       (= :delete application)
+       (if coll-tuple
+         (let [this (.this this) 
+               idx-keys (-> coll-tuple last get-idx-keys)]
+           (if-let [idx-key (get @idx-keys name)]
+             (alter (:data this) dissoc idx-key)
+             (throw (RuntimeException. (format "FATAL RUNTIME EXCEPTION: index %s is inconsistent, failed to remove key %s from value-wrapper %s. Failed to reverse lookup index key." name coll-tuple)))))))))
 
 (defn create-attribute-index 
   "creates an attribute index for attributes a"
@@ -162,17 +181,17 @@
 (deftype
     ^{:doc "The child (foreign key) part of the referential integrity constraint that checks during insert and alterations of documents refering a referenced/parent document"}
     ReferrerIntegrityConstraint [this name foreign-coll foreign-key]
-  Constraint
-  (application [this] #{:insert :update})
-  (precommit [this ctx coll application key value]
-    {:pre [(contains? ctx foreign-coll)]}
-    (let [foreign-coll (get ctx foreign-coll)]
-      ;;check whether the user-value has a non-nil foreign key,
-      ;;otherwise we don't have to check at all
-      (if-let [foreign-key (get value foreign-key)]
-        (if-not (contains-key? foreign-coll foreign-key)
-          (throw (create-constraint-exception coll key (format "referrer integrity constraint violated. no document with key %s within collection %s" foreign-key (.foreign-coll this))))))))
-  (postcommit [this ctx coll application coll-tuple] nil))
+    Constraint
+    (application [this] #{:insert :update})
+    (precommit [this ctx coll application key value]
+      {:pre [(contains? ctx foreign-coll)]}
+      (let [foreign-coll (get ctx foreign-coll)]
+        ;;check whether the user-value has a non-nil foreign key,
+        ;;otherwise we don't have to check at all
+        (if-let [foreign-key (get value foreign-key)]
+          (if-not (contains-key? foreign-coll foreign-key)
+            (throw (create-constraint-exception coll key (format "referrer integrity constraint violated. no document with key %s within collection %s" foreign-key (.foreign-coll this))))))))
+    (postcommit [this ctx coll application coll-tuple] nil))
 
 (defn create-referrer-integrity-constraint 
   [name foreign-coll foreign-key]
@@ -185,15 +204,15 @@
 (deftype
     ^{:doc "The referenced/parent (primary key) part of the referential integrity constraint that checks during deleting of a documents whether it is referenced by another document"}
     ReferencedIntegrityConstraint [this name referencing-coll referencing-key]
-  Constraint
-  (application [this] #{:delete})
-  (precommit [this ctx coll application key value]
-    {:pre [(contains? ctx referencing-coll)]}
-    (let [;;select the referencee using the automatically generated index on the referencing-key
-          subs (select-from-coll (get ctx referencing-coll) [referencing-key] >= [key] < (stage-next-unique-key (get ctx referencing-coll) [key]))]
+    Constraint
+    (application [this] #{:delete})
+    (precommit [this ctx coll application key value]
+      {:pre [(contains? ctx referencing-coll)]}
+      (let [;;select the referencee using the automatically generated index on the referencing-key
+            subs (select-from-coll (get ctx referencing-coll) [referencing-key] >= [key] < (stage-next-unique-key (get ctx referencing-coll) [key]))]
         (if-not (empty? subs)
           (throw (create-constraint-exception coll key (format "referenced integrity constraint violated. a document with key %s within collection %s references this document" referencing-coll referencing-key))))))
-  (postcommit [this ctx coll application coll-tuple] nil))
+    (postcommit [this ctx coll application coll-tuple] nil))
 
 (defn create-referenced-integrity-constraint 
   [name referencing-coll referencing-key]
@@ -216,6 +235,13 @@
   (doseq [c (filter #(contains? (.application %) application) (-> coll :constraints deref vals))]
     (apply f c ctx coll application attr)))
 
+(defn user-scope-tuple 
+  "within a collection a key-value-pair consists of k -> r, where k is [uk i], r is a STM reference to document v, uk
+  is the key the user used to store document v. i is a running index that allows
+  the uk being non-unique with respect to the collection. since v is wrapped by an STM reference we provide back the _raw_ value v in order to prevent the user from altering the value using STM mechanism directly, since this would bypass the secondary indexes and make them invalid."
+  [[k r]]
+  [k @r])
+
 (defn insert [tx coll-name key value]
   "inserts a document [value] by key [key] into collection with name [coll-name] using the transaction [tx]. the transaction can be created from context using (create-tx [context])"
   {:pre [(contains? (-> tx :context deref) coll-name)]}
@@ -223,11 +249,12 @@
         coll (get ctx coll-name)
         data (:data coll)
         unique-key (create-unique-key coll key)
-        coll-tuple [unique-key (value-wrapper coll-name unique-key value)]]
+        coll-tuple [unique-key (value-wrapper coll unique-key value)]]
     (do
       (process-constraints :insert precommit ctx coll key value)
       (alter data assoc unique-key (last coll-tuple))
-      (process-constraints :insert postcommit ctx coll coll-tuple))))
+      (process-constraints :insert postcommit ctx coll coll-tuple)
+      (user-scope-tuple coll-tuple))))
 
 
 (defn- alter-index
@@ -269,7 +296,7 @@
     (do
       ;;check all referential integrity constraints on the referrer site of the coin
       (doseq [_ rics]
-            (.precommit _ ctx coll :update (first user-scope-tuple) new-user-value))
+        (.precommit _ ctx coll :update (first user-scope-tuple) new-user-value))
       ;;alter all indexes to consider the document change
       (doseq [idx idxs]
         (alter-index idx coll-tuple old-user-value new-user-value))
@@ -288,9 +315,10 @@
         sub (subseq @data >= (create-unique-key key))]
     (let [tuples-to-delete (take-while #(= key (-> % first first)) sub)]
       (doseq [x tuples-to-delete]
-        (process-constraints :delete precommit ctx coll key (last x))
+        (process-constraints :delete precommit ctx coll key (-> x last deref))
         (alter data dissoc (first x))
-        (process-constraints :delete postcommit ctx coll x))
+        (process-constraints :delete postcommit ctx coll x)
+        (alter-meta! (last x) assoc :deleted true))
       (count tuples-to-delete))))
 
 (defn- user-key [k]
@@ -304,9 +332,10 @@
         data (:data coll)]
     (if-let [x (get @data key)]
       (do
-        (process-constraints :delete precommit ctx coll (user-key key) x)
+        (process-constraints :delete precommit ctx coll (user-key key) @x)
         (alter data dissoc key)
-        (process-constraints :delete postcommit ctx coll [key x])
+        (process-constraints :delete postcommit ctx coll x)
+        (alter-meta! x assoc :deleted true)
         1) 0)))
 
 (defn coll-empty? 
@@ -320,13 +349,6 @@
   [tx coll-name]
   {:pre [(contains? (-> tx :context deref) coll-name)]}
   (-> (get (-> tx :context deref) coll-name) :data deref count))
-
-(defn user-scope-tuple 
-  "within a collection a key-value-pair consists of k -> r, where k is [uk i], r is a STM reference to document v, uk
-  is the key the user used to store document v. i is a running index that allows
-  the uk being non-unique with respect to the collection. since v is wrapped by an STM reference we provide back the _raw_ value v in order to prevent the user from altering the value using STM mechanism directly, since this would bypass the secondary indexes and make them invalid."
-  [[k r]]
-  [k @r])
 
 (defn select-first
   "returns the first key/value pair of the collection [coll-name] that matches the key [key] or nil"

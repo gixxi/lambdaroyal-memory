@@ -1,5 +1,6 @@
 (ns lambdaroyal.memory.core.context
   (require [lambdaroyal.memory.core.tx :refer :all])
+  (require [lambdaroyal.memory.eviction.core :refer [create-proxy]])
   (:gen-class))
 
 (defn referential-integrity-constraint-factory [meta-model]
@@ -41,21 +42,22 @@
            {}
            (:indexes collection)))]
     
-    {:running (ref (bigint 0))
-     :name (:name collection)
-     :data (ref (sorted-map))
-     :constraints (ref 
-                   (merge 
-                    (fn-index-factory collection) 
-                    (fn-constraint-factory collection) 
-                    (reduce 
-                     (fn [acc [coll constraint]]
-                       (if 
-                         (= (:name collection) coll)
-                         (assoc acc (.name constraint) constraint)
-                         acc))
-                     {}
-                     referential-integrity-constraints)))}))
+    (#(if (:evictor collection) (assoc % :evictor (create-proxy (:evictor collection) (:evictor-delay collection))) %)
+     {:running (ref (bigint 0))
+             :name (:name collection)
+             :data (ref (sorted-map))
+             :constraints (ref 
+                           (merge 
+                            (fn-index-factory collection) 
+                            (fn-constraint-factory collection) 
+                            (reduce 
+                             (fn [acc [coll constraint]]
+                               (if 
+                                   (= (:name collection) coll)
+                                 (assoc acc (.name constraint) constraint)
+                                 acc))
+                             {}
+                             referential-integrity-constraints)))})))
 
 (defn create-context [meta-model]
   (let [rics (referential-integrity-constraint-factory meta-model)]

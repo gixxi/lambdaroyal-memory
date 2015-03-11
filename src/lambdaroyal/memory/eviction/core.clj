@@ -24,7 +24,8 @@
   (let [proxy
         (EvictionChannelProxy. 
          (java.util.concurrent.ConcurrentLinkedQueue.) 
-         delay 
+         ;; at least 100 ms pause whenever the queue gets empty
+         (or delay 100) 
          (atom false) 
          eviction-channel)
         consumer
