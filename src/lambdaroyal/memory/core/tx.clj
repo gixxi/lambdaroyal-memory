@@ -318,7 +318,9 @@
         (process-constraints :delete precommit ctx coll key (-> x last deref))
         (alter data dissoc (first x))
         (process-constraints :delete postcommit ctx coll x)
-        (alter-meta! (last x) assoc :deleted true))
+        (alter-meta! (last x) assoc :deleted true)
+        ;;set again to notify eviction watches
+        (ref-set (last x) (->  x last deref)))
       (count tuples-to-delete))))
 
 (defn- user-key [k]
@@ -336,6 +338,8 @@
         (alter data dissoc key)
         (process-constraints :delete postcommit ctx coll x)
         (alter-meta! x assoc :deleted true)
+        ;;set again to notify eviction watches
+        (ref-set x @x)
         1) 0)))
 
 (defn coll-empty? 

@@ -7,11 +7,11 @@
   (stopped? [this] "returns true iff the channel was closed.")
   (insert [this coll-name unique-key user-value] "called when a new value gets inserted into the database.")
   (update [this coll-name unique-key old-user-value new-user-value] "called when an update took place")
-  (delete [this coll-name unique-key]))
+  (delete [this coll-name unique-key] "called when a delete took place"))
 
 (defrecord EvictionChannelProxy [queue delay stopped eviction-channel]
   EvictionChannel
-  (stop [this] (swap! (.stopped this) true))
+  (stop [this] (swap! (.stopped this) not))
   (stopped? [this] (true? @(.stopped this)))
   (insert [this coll-name unique-key user-value]
     (.add (.queue this) [:insert eviction-channel coll-name unique-key user-value]))
@@ -30,17 +30,22 @@
          eviction-channel)
         consumer
         (future
-          (while (-> proxy stopped? not)
-            (if-let [i (.poll (.queue proxy))]
-              (let [[fn & args] i]
-                (cond (= :insert fn)
-                      (apply insert args)
-                      (= :update fn)
-                      (apply update args)
-                      (= :delete fn)
-                      (apply delete args)))
-              (Thread/sleep delay))))]
-    proxy))
+          (do
+            (while (or 
+                    (-> proxy stopped? not)
+                    (not (.isEmpty (.queue proxy))))
+              (if-let [i (.poll (.queue proxy))]
+                (let [[fn & args] i]
+                  (cond (= :insert fn)
+                        (apply insert args)
+                        (= :update fn)
+                        (apply update args)
+                        (= :delete fn)
+                        (apply delete args)))
+                (do 
+                  (println :waits)
+                  (Thread/sleep (or delay 100)))))))]
+    (assoc proxy :consumer consumer)))
 
 (defrecord SysoutEvictionChannel [this]
   EvictionChannel

@@ -8,6 +8,7 @@
 
 (defrecord CounterEvictionChannel [insert-count update-count delete-count]
   evict/EvictionChannel
+  (yield-close-promise [this] (promise))
   (stop [this] nil)
   (stopped? [this] nil)
   (insert [this coll-name unique-key user-value]
@@ -62,7 +63,13 @@
      (alter-document tx :order (select-first tx :order 1) assoc :receiver :boo2 :client :lambda)
      (alter-document tx :order (select-first tx :order 1) assoc :receiver :boo3))
     (Thread/sleep 400)
-    (fact "update counter inc - pay attention: multiple updates within one tx result in one eviction only" @update-count => 2)))
+    (fact "update counter inc - pay attention: multiple updates within one tx result in one eviction only" @update-count => 2)
+
+    
+    (dosync 
+     (delete tx :order 1))
+    (Thread/sleep 400)
+    (fact "delete counter inc" @delete-count => 1)))
 
 
 
