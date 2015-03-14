@@ -16,8 +16,21 @@
 
 (facts "creating eviction scheme"
   (dosync
-   (doseq [r (range 1000)]
+   (doseq [r (range 1)]
      (insert tx :order r {:type :gaga :receiver :foo :run r})))
+  (dosync
+   (alter-document tx :order (select-first tx :order 1) assoc :type :gigi))
+  (dosync
+   (delete tx :order 0))
+  (.stop (-> @ctx :order :evictor))
+  (-> @ctx :order :evictor :consumer deref))
+
+(facts "checking couchdb eviction scheme with insert/update/delete in single tx"
+  (dosync
+   (doseq [r (range 1)]
+     (insert tx :order r {:type :gaga :receiver :foo :run r}))
+   (alter-document tx :order (select-first tx :order 0) assoc :type :gigi)
+   (delete tx :order 0))
   (.stop (-> @ctx :order :evictor))
   (-> @ctx :order :evictor :consumer deref))
 
