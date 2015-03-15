@@ -3,44 +3,73 @@
            [lambdaroyal.memory.eviction.core :as evict]
            [lambdaroyal.memory.core.context :refer :all]
            [lambdaroyal.memory.core.tx :refer :all]
-           [lambdaroyal.memory.eviction.couchdb :as evict-couchdb])
+           [lambdaroyal.memory.eviction.couchdb :as evict-couchdb]
+           [lambdaroyal.memory.helper :refer :all]
+           [com.ashafa.clutch :as clutch])
   (import [lambdaroyal.memory.core ConstraintException]))
 
-(def meta-model
-  {
-   :order
-   {:unique true :indexes [] :evictor (evict-couchdb/create :order) :evictor-delay 1000}})
-
-(def ctx (create-context meta-model))
-(def tx (create-tx ctx))
-
-(facts "creating eviction scheme"
-  (dosync
-   (doseq [r (range 1)]
-     (insert tx :order r {:type :gaga :receiver :foo :run r})))
-  (dosync
-   (alter-document tx :order (select-first tx :order 1) assoc :type :gigi))
-  (dosync
-   (delete tx :order 0))
-  (.stop (-> @ctx :order :evictor))
-  (-> @ctx :order :evictor :consumer deref))
-
-(facts "checking couchdb eviction scheme with insert/update/delete in single tx"
-  (dosync
-   (doseq [r (range 1)]
-     (insert tx :order r {:type :gaga :receiver :foo :run r}))
-   (alter-document tx :order (select-first tx :order 0) assoc :type :gigi)
-   (delete tx :order 0))
-  (.stop (-> @ctx :order :evictor))
-  (-> @ctx :order :evictor :consumer deref))
 
 
-
-
-
-
-
-
+(facts "inserting into an empty couch db instance"
+  (let [meta-model
+        {:order {:unique true :indexes [] :evictor (evict-couchdb/create :order) :evictor-delay 1000}}
+        ctx (create-context meta-model)
+        tx (create-tx ctx)]
+    (try
+      (clutch/delete-database (evict-couchdb/get-database-url (-> @ctx :order :evictor :url) (name :order)))
+      @(.start (-> @ctx :order :evictor) ctx [(:order @ctx)])
+      (let [_
+            (dosync
+             (doseq [r (range 100)]
+               (insert tx :order r {:type :gaga :receiver :foo :run r})))
+            inserted (select tx :order >= 0)]
+        (dosync
+         (doseq [d inserted]
+           (alter-document tx :order d assoc :run 1)))
+        (dosync
+         (doseq [d (drop 50 inserted)]
+           (delete tx :order (first d)))))
+      (finally
+        (.stop (-> @ctx :order :evictor))
+        (-> @ctx :order :evictor :consumer deref))))
+  ;;read again
+  (let [meta-model
+        {:order {:unique true :indexes [] :evictor (evict-couchdb/create :order) :evictor-delay 1000}}
+        ctx (create-context meta-model)
+        tx (create-tx ctx)
+        _ (println :queue (-> @ctx :order :evictor .queue .size))]
+    (try
+      @(.start (-> @ctx :order :evictor) ctx [(:order @ctx)])
+      (let [inserted
+            (dosync
+             (select tx :order >= 0))]
+        (fact "must reload all documents during ramp-up"
+          (apply + (map #(-> % last :run) inserted)) => 50)
+        (fact "1000" (count (select tx :order >= 0)) => 50))
+      (finally
+        (.stop (-> @ctx :order :evictor))
+        (-> @ctx :order :evictor :consumer deref)
+        (fact "1000 #2" (count (select tx :order >= 0)) => 50))))
+  ;;do masstest
+  (fact "timing, adding 1000 to couch db and removing 500 afterwards must not take more than 10 secs"
+    (first (timed (let [meta-model
+                        {:order {:unique true :indexes [] :evictor (evict-couchdb/create :order) :evictor-delay 500}}
+                        ctx (create-context meta-model)
+                        tx (create-tx ctx)]
+                    (try
+                      (clutch/delete-database (evict-couchdb/get-database-url (-> @ctx :order :evictor :url) (name :order)))
+                      @(.start (-> @ctx :order :evictor) ctx [(:order @ctx)])
+                      (let [_
+                            (fact "inserting into mem db" (first (timed (dosync
+                                                                         (doseq [r (range 1000)]
+                                                                           (insert tx :order r {:type :gaga :receiver :foo :run r :interface :yes :live true}))))) => (roughly 0 200))
+                            inserted (select tx :order >= 0)]
+                        (dosync
+                         (doseq [d (drop 500 inserted)]
+                           (delete tx :order (first d)))))
+                      (finally
+                        (.stop (-> @ctx :order :evictor))
+                        (-> @ctx :order :evictor :consumer deref)))))) => (roughly 0 30000)))
 
 
 

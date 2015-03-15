@@ -6,9 +6,10 @@
   (import [lambdaroyal.memory.core ConstraintException]))
 
 
-(defrecord CounterEvictionChannel [insert-count update-count delete-count]
+(defrecord CounterEvictionChannel [insert-count update-count delete-count started]
   evict/EvictionChannel
-  (yield-close-promise [this] (promise))
+  (start [this ctx colls] (future nil))
+  (started? [this] @(.started this))
   (stop [this] nil)
   (stopped? [this] nil)
   (insert [this coll-name unique-key user-value]
@@ -27,49 +28,56 @@
 (def insert-count (atom 0))
 (def update-count (atom 0))
 (def delete-count (atom 0))
-(def counter-evictor (CounterEvictionChannel. insert-count update-count delete-count))
+(def counter-evictor (CounterEvictionChannel. insert-count update-count delete-count (atom true)))
 
 (def meta-model
   {
    :order
    {:unique true :indexes [] :evictor counter-evictor :evictor-delay 100}})
 
-(facts "creating eviction scheme"
-  (let [ctx (create-context meta-model)
-        tx (create-tx ctx)]
-    (fact "start a zero counter" @insert-count => 0)
-    (fact "start a zero counter" @update-count => 0)
-    (fact "start a zero counter" @delete-count => 0)
-    (dosync 
-     (insert tx :order 1 {:type :gaga :receiver :foo}))
-    (Thread/sleep 200)
-    (fact "inc insert counter" @insert-count => 1)
+(try
+  (facts "creating eviction scheme"
+    (let [ctx (create-context meta-model)
+          tx (create-tx ctx)]
+      (try
+        (do
+          (fact "start a zero counter" @insert-count => 0)
+          (fact "start a zero counter" @update-count => 0)
+          (fact "start a zero counter" @delete-count => 0)
+          (dosync 
+           (insert tx :order 1 {:type :gaga :receiver :foo}))
+          (Thread/sleep 200)
+          (fact "inc insert counter" @insert-count => 1)
 
-    (fact "try frauting the unique constraint after valid insert in one tx must throw exception" 
-      (dosync 
-       (insert tx :order 2 {:type :gaga :receiver :foo})
-       (insert tx :order 1 {:type :gaga :receiver :foo})) => (throws ConstraintException))
-    (Thread/sleep 200)
-    (fact "failed tx does not impose eviction" @insert-count => 1)
-    
-    (dosync 
-     (alter-document tx :order (select-first tx :order 1) assoc :receiver :boo))
-    (Thread/sleep 200)
-    (fact "insert counter remains after update" @insert-count => 1)
-    (fact "delete counter remains after update" @delete-count => 0)
-    (fact "update counter inc" @update-count => 1)
+          (fact "try frauting the unique constraint after valid insert in one tx must throw exception" 
+            (dosync 
+             (insert tx :order 2 {:type :gaga :receiver :foo})
+             (insert tx :order 1 {:type :gaga :receiver :foo})) => (throws ConstraintException))
+          (Thread/sleep 200)
+          (fact "failed tx does not impose eviction" @insert-count => 1)
+          
+          (dosync 
+           (alter-document tx :order (select-first tx :order 1) assoc :receiver :boo))
+          (Thread/sleep 200)
+          (fact "insert counter remains after update" @insert-count => 1)
+          (fact "delete counter remains after update" @delete-count => 0)
+          (fact "update counter inc" @update-count => 1)
 
-    (dosync 
-     (alter-document tx :order (select-first tx :order 1) assoc :receiver :boo2 :client :lambda)
-     (alter-document tx :order (select-first tx :order 1) assoc :receiver :boo3))
-    (Thread/sleep 400)
-    (fact "update counter inc - pay attention: multiple updates within one tx result in one eviction only" @update-count => 2)
+          (dosync 
+           (alter-document tx :order (select-first tx :order 1) assoc :receiver :boo2 :client :lambda)
+           (alter-document tx :order (select-first tx :order 1) assoc :receiver :boo3))
+          (Thread/sleep 400)
+          (fact "update counter inc - pay attention: multiple updates within one tx result in one eviction only" @update-count => 2)
 
-    
-    (dosync 
-     (delete tx :order 1))
-    (Thread/sleep 400)
-    (fact "delete counter inc" @delete-count => 1)))
+          
+          (dosync 
+           (delete tx :order 1))
+          (Thread/sleep 400)
+          (fact "delete counter inc" @delete-count => 1))
+        (finally 
+          (do
+            (.stop (-> @ctx :order :evictor))
+            (-> @ctx :order :evictor :consumer deref)))))))
 
 
 

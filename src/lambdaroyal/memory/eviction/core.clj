@@ -3,6 +3,8 @@
   (:gen-class))
 
 (defprotocol EvictionChannel
+  (start [this ctx colls] "starts the eviction channel by reading in the persistent data into the in-memory db denoted by [ctx]. This function assumes that is eviction channel instance is handling all the collection [colls]. returns a future that can be joined to wait for the database to got warmed up.")
+  (started? [this])
   (stop [this] "closes the channel. Further evictions must throw an exception.")
   (stopped? [this] "returns true iff the channel was closed.")
   (insert [this coll-name unique-key user-value] "called when a new value gets inserted into the database.")
@@ -11,14 +13,19 @@
 
 (defrecord EvictionChannelProxy [queue delay stopped eviction-channel]
   EvictionChannel
+  (start [this ctx colls] (.start (.eviction-channel this) ctx colls))
+  (started? [this] (.started? (.eviction-channel this)))
   (stop [this] (swap! (.stopped this) not))
   (stopped? [this] (true? @(.stopped this)))
   (insert [this coll-name unique-key user-value]
-    (.add (.queue this) [:insert eviction-channel coll-name unique-key user-value]))
+    (if (-> this .eviction-channel .started?)
+      (.add (.queue this) [:insert eviction-channel coll-name unique-key user-value])))
   (update [this coll-name unique-key old-user-value new-user-value]
-    (.add (.queue this) [:update eviction-channel coll-name unique-key old-user-value new-user-value]))
+    (if (-> this .eviction-channel .started?)
+      (.add (.queue this) [:update eviction-channel coll-name unique-key old-user-value new-user-value])))
   (delete [this coll-name unique-key]
-    (.add (.queue this) [:delete eviction-channel coll-name unique-key])))
+    (if (-> this .eviction-channel .started?)
+    (.add (.queue this) [:delete eviction-channel coll-name unique-key]))))
 
 (defn create-proxy [eviction-channel delay]
   (let [proxy
@@ -42,14 +49,13 @@
                         (apply update args)
                         (= :delete fn)
                         (apply delete args)))
-                (do 
-                  (println :waits)
-                  (Thread/sleep (or delay 100)))))))]
+                (Thread/sleep (or delay 100))))))]
     (assoc proxy :consumer consumer)))
 
-(defrecord SysoutEvictionChannel [this]
+(defrecord SysoutEvictionChannel [this started]
   EvictionChannel
-  (stop [this] nil)
+  (start [this ctx colls] (future nil))
+  (started? [this] @(.started this))
   (stopped? [this] nil)
   (insert [this coll-name unique-key user-value]
     (println :insert coll-name unique-key))
@@ -59,4 +65,4 @@
     (println :delete coll-name unique-key)))
 
 (defn create-SysoutEvictionChannel []
-  (SysoutEvictionChannel. (atom false)))
+  (SysoutEvictionChannel. (atom false) (atom true)))
