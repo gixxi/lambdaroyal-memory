@@ -11,11 +11,6 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
            [clojure.java.io :as io]
            [clojure.tools.logging :as log]))
 
-(defn- log-debug [str]
-  (do
-    (println str)
-    (log/debug str)))
-
 (defn- check-couchdb-connection [url]
   (if-not 
       (= "Welcome" (:couchdb (clutch/couchdb-info url)))
@@ -43,23 +38,19 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
         doc (assoc user-value :_id (str unique-key) :unique-key unique-key)
         doc (if rev (assoc doc :_rev rev) doc)
         put (fn [doc] (let [result (clutch/put-document (get-database channel coll-name) doc)]
-                        (swap! (.revs channel) assoc rev-key (:_rev result))))
-        _ (comment (log-debug (format "put document with key %s to collection %s" unique-key coll-name)))]
+                        (swap! (.revs channel) assoc rev-key (:_rev result))))]
     (try
       (put doc)
       (catch Exception e 
         ;;retry
         (let [_ (if (is-update-conflict e)
-                  (do
-                    (println (format "update conflict on %s. try again." doc))
-                    (log/warn (format "update conflict on %s. try again." doc))))
+                  (log/warn (format "update conflict on %s. try again." doc)))
               existing (clutch/get-document (get-database channel coll-name) (str unique-key))
               doc (assoc doc :_rev (:_rev existing))]
           (try
             (put doc)
             (catch Exception e
-              (do (println (format "failed to put document %s to couchdb during retry. stop eviction channel." doc)))
-              (do (log/fatal (format "failed to put document %s to couchdb during retry. stop eviction channel." doc)))
+              (log/fatal (format "failed to put document %s to couchdb during retry. stop eviction channel." doc))
               (.stop channel))))))))
 
 (defn- delete-document 
@@ -71,8 +62,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
         (clutch/delete-document (get-database channel coll-name) existing)
         (swap! (.revs channel) dissoc [coll-name unique-key]))
       (catch Exception e
-        (do (println (format "failed to delete %s from couchdb. stop eviction channel." existing)))
-        (do (log/fatal (format "failed to delete document %s from couchdb. stop eviction channel." existing)))
+        (log/fatal (format "failed to delete document %s from couchdb. stop eviction channel." existing))
         (.stop channel)))))
 
 (defrecord CouchEvictionChannel [url prefix revs ^clojure.lang.Atom started]
@@ -81,22 +71,23 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
     (future
       (do
         (doseq [r colls]
-          (log-debug (format "read-in collection %s" (:name r))))
-        (doall 
-         (pmap
-          #(let [db (get-database this (:name %))
-                 docs (clutch/all-documents db)
-                 tx (create-tx ctx)]
-             (do
-               (doseq [doc docs]
-                 (let [{:keys [id]} doc
-                       existing (clutch/get-document (get-database this (:name %)) id)
-                       user-scope-tuple (dosync
-                                         (comment (log-debug (format "read-in %s into colllection %s" id (:name %))))
-                                         (insert tx (:name %) (-> existing :unique-key first) existing))]
-                   (swap! (.revs this) assoc [(:name %) (first user-scope-tuple)] (:_rev existing))))
-               (log-debug (format "collection %s contains %d documents" (:name %) (count docs)))))
-          colls))
+          (log/debug (format "read-in collection %s" (:name r))))
+        (log-info-timed 
+         "read-in collections"
+         (doall 
+          (pmap
+           #(let [db (get-database this (:name %))
+                  docs (clutch/all-documents db)
+                  tx (create-tx ctx :force true)]
+              (do
+                (doseq [doc docs]
+                  (let [{:keys [id]} doc
+                        existing (clutch/get-document (get-database this (:name %)) id)
+                        user-scope-tuple (dosync
+                                          (insert tx (:name %) (-> existing :unique-key first) existing))]
+                    (swap! (.revs this) assoc [(:name %) (first user-scope-tuple)] (:_rev existing))))
+                (log/info (format "collection %s contains %d documents" (:name %) (count docs)))))
+           colls)))
         (swap! (.started this) not))))
   (started? [this] @(.started this))
   (stopped? [this] nil)

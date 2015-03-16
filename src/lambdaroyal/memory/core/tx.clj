@@ -4,8 +4,19 @@
   (:import [lambdaroyal.memory.core ConstraintException])
   (:gen-class))
 
-(defn create-tx [context]
-  {:context context})
+(defn create-tx 
+  "creates a transaction upon user-scope function like select, insert, alter-document, delete can be executed. Iff an eviction channel is assigned to a collection then this channel needs to be started otherwise a "
+  [ctx & opts]
+  (let [opts (apply hash-map opts)
+        {:keys [force]} opts]
+    (do
+      (if-not force
+        (doseq [coll (vals @ctx)]
+          (if-let [eviction-proxy (:evictor coll)]
+            (if-not 
+                (.started? eviction-proxy)
+              (throw (IllegalStateException. (format "eviction channel for collection %s is not yet started." (:coll-name coll))))))))
+      {:context ctx})))
 
 (def ^:const constraint-appl-domain 
   "donotes database actions suitable for certain types of domains"
@@ -44,7 +55,6 @@
   "takes a value-wrapper into account, that is the wrapper around the user value that is inserted into the database and returns the STM ref to the reverse lookup map from the index name to the key that refers this value-wrapper within this very index"
   [value-wrapper]
   (-> value-wrapper meta :idx-keys))
-
 
 (defn- is-unique-key? [key]
   (let [m (meta key)]

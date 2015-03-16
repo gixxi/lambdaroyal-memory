@@ -1,5 +1,8 @@
 (ns lambdaroyal.memory.helper
-    (:gen-class))
+  (require [clojure.tools.logging :as log])
+  (:gen-class))
+
+(def log-count (atom 0))
 
 (defmacro timed [form]
   "evaluates parameter form to obj and gives back the tuple (delay obj) where delay denotes the floating point number of ms needed to eval the form"
@@ -22,6 +25,15 @@
 (defmacro wait-futures [& args]
   `(doseq [f# (futures ~@args)] @f#))
 
+(defmacro log-info-timed [msg form]
+  (let [c (gensym "c")
+        _ (gensym "_")
+        t (gensym "t")]
+    `(let [~c (swap! log-count inc)
+           ~_ (log/info (format "[START %d] %s" ~c ~msg))
+           ~t (timed ~form)
+           ~_ (log/info (format "[STOP %d (ms) %f] %s" ~c (first ~t) ~msg))]
+       (last ~t))))
 
 
 
