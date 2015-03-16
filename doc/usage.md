@@ -18,7 +18,7 @@ The subsequently picture points out those relations.
 (ns lambdaroyal.memory.core.test-context
   (require [lambdaroyal.memory.core.context :refer :all]))
 
-(def meta-model-with-ric
+(def meta-model
   {:type
    {:unique true :indexes []}
    :order
@@ -92,6 +92,39 @@ Turns out to return the first part-order instance, since the second one with *ke
 ```
 
 This just returns all part-order instances.
+
+### Selecting by *indexed attribute set*
+
+Indexed are defined over tuples of entity type attributes. One can manually decorate the metamodel with index definitions. When having referential integrity constraints like in our example datamodel, then you get respective indexes for free. Let's use them
+
+```clojure
+(dosync
+  (select tx :part-order [:type] >= [1]))
+```
+
+This returns all part-order instances that refer the type instance with key 1 in logarithmic time with respect to the number of part-orders stored in the db. The oddy wrapping of the *:type* keyword into a vector is due to the fact that indexes are defined on *attribute sets* rather than one single attributes.
+
+So one could have the following meta-model that denotes an index on the *order* entity type that speeds up selects when searching ether via attribute set [*:client* *:number*] or via attribute set [*:client*]
+
+```clojure
+(def meta-model
+  {:type
+   {:unique true :indexes []}
+   :order
+   {:unique true :indexes [{:name :client-number :unique false :attributes [:client :number]]}
+   :part-order
+   {:unique true :indexes [] :foreign-key-constraints [
+                                                       {:name :type :foreign-coll :type :foreign-key :type}
+                                                       {:name :order :foreign-coll :order :foreign-key :order}]}})
+```
+
+Select using this indexed attribute set to get all *order* documents that have *:client* = 1 and *:number* in range [2 3]
+
+```clojure
+(dosync
+  (select tx :order [:client :number] >= [1 2] < [1 4]))
+```
+
 ## Deleting a document
 
 Lets clean up a bit
