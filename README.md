@@ -1,7 +1,7 @@
 # lambdaroyal-memory
 STM-based in-memory database storing persistent data structures
 
-[Usage](https://raw.githubusercontent.com/gixxi/lambdaroyal-memory/master/doc/usage.md)
+[Usage](https://raw.githubusercontent.com/gixxi/lambdaroyal-memory/blob/master/doc/usage.md)
 
 ## Classification
 
