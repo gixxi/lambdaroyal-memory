@@ -15,12 +15,12 @@
 (def meta-model-with-indexes
   {
    :order
-   {:unique true :indexes [{:name :client :unique false :attributes [[:client]]}
-                           {:name :client-no :unique false :attributes [[:client] [:no]]}]}
+   {:unique true :indexes [{:name :client :unique false :attributes [:client]}
+                           {:name :client-no :unique false :attributes [:client :no]}]}
    :part-order
    {:unique true :indexes []}
    :interaction
-   {:indexes [{:attribues [[:keyword]]}]}})
+   {:indexes [{:attributes [:keyword]}]}})
 
 (def meta-model-with-ric
   {:type
@@ -31,6 +31,9 @@
    {:unique true :indexes [] :foreign-key-constraints [
                                                        {:name :type :foreign-coll :type :foreign-key :type}
                                                        {:name :order :foreign-coll :order :foreign-key :order}]}})
+
+(facts "facts about the created context with indexes"
+  (fact "can create" (create-context meta-model-with-indexes) => truthy))
 
 (facts "facts about the created context"
   (let [ctx (create-context meta-model)]

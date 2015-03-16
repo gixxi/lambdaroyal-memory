@@ -38,7 +38,7 @@
                (assoc acc 
                  name
                  (let [{:keys [unique attributes]} index]
-                   (create-attribute-index name unique (map first attributes))))))
+                   (create-attribute-index name unique attributes)))))
            {}
            (:indexes collection)))]
     
