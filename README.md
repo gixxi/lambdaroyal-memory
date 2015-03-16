@@ -1,6 +1,10 @@
 # lambdaroyal-memory
 STM-based in-memory database storing persistent data structures
 
+## Usage
+
+![](https://raw.githubusercontent.com/gixxi/lambdaroyal-memory/master/usage.md)
+
 ## Classification
 
 lambdaroyal-memory is an in-memory database, that primarily recides in the volatile main memory. Either occasionally or always write operations are flushed to a persistent backup storage.
@@ -64,8 +68,4 @@ where collection is a tuple of
 * unique constraint
 * further functional constraints
 * indexes per collection
-
-* index
-** name (unique with respect to all indexes of that collection)
-** key generator function 
-** optional comparator function
+* eviction channel that serves as persistent backup
