@@ -1,7 +1,7 @@
 (ns lambdaroyal.memory.core.test-context
   (require [midje.sweet :refer :all]
            [lambdaroyal.memory.core.context :refer :all])
-  (import [lambdaroyal.memory.core.tx Constraint]))
+  (import [lambdaroyal.memory.core.tx Constraint ReferrerIntegrityConstraint]))
 
 (def meta-model
   {
@@ -72,12 +72,13 @@
       (fact "RIC is not duplicated falsey" ric => falsey))))
 
 
-
-
-
-
-
-
+(facts "testing the y-combinator used build the dependency model"
+  (let [model {:order [:order-type :client] :part-order [:order :article] :article [:client] :client [] :order-type []}]
+    (fact "reveal proper dependency" (apply concat (take-while not-empty (map last (rest (iterate dependency-order [model]))))) => '(:client :order-type :article :order :part-order))
+    (fact "reveal proper dependencies on the meta modell"
+      (apply concat (take-while not-empty (map last (rest (iterate dependency-order [(dependency-model (-> (create-context meta-model-with-ric) deref vals))]))))) => '(:type :order :part-order))
+    (fact "reveal proper collection order using the concenience function"
+      (map :name (dependency-model-ordered (-> (create-context meta-model-with-ric) deref vals))) => '(:type :order :part-order))))
 
 
 

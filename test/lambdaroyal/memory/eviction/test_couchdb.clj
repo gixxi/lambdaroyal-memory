@@ -21,7 +21,7 @@
   (let [meta-model
         {:order {:unique true :indexes [] :evictor (evict-couchdb/create :order) :evictor-delay 10}}
         ctx (create-context meta-model)
-     _ @(.start (-> @ctx :order :evictor) ctx [(:order @ctx)])]
+        _ @(.start (-> @ctx :order :evictor) ctx [(:order @ctx)])]
     (fact "cannot start calling user-scope functions until eviction channel is not started" (create-tx ctx) => truthy)))
 
 (facts "inserting into an empty couch db instance"
@@ -84,7 +84,6 @@
                       (finally
                         (.stop (-> @ctx :order :evictor))
                         (-> @ctx :order :evictor :consumer deref)))))) => (roughly 0 30000)))
-
 
 
 
