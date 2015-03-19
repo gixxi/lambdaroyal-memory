@@ -3,6 +3,29 @@ STM-based in-memory database storing persistent data structures
 
 [Usage](https://github.com/gixxi/lambdaroyal-memory/blob/master/doc/usage.md)
 
+## Dependencies
+
+Leiningen
+
+```clojure
+[org.clojars.gixxi/lambdaroyal-memory "0.2-SNAPSHOT"]
+```
+
+Gradle
+```
+compile "org.clojars.gixxi:lambdaroyal-memory:0.2-SNAPSHOT"
+```
+
+Maven
+
+```xml
+<dependency>
+  <groupId>org.clojars.gixxi</groupId>
+  <artifactId>lambdaroyal-memory</artifactId>
+  <version>0.2-SNAPSHOT</version>
+</dependency>
+```
+
 ## Classification
 
 lambdaroyal-memory is an in-memory database, that primarily recides in the volatile main memory. Either occasionally or always write operations are flushed to a persistent backup storage.
