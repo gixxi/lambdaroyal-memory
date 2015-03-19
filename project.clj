@@ -14,4 +14,4 @@
                              com.sun.jdmk/jmxtools
                              com.sun.jmx/jmxri]]]
   :profiles {:dev {:dependencies [[midje "1.6.3"]]}}
-  :aot [lambdaroyal.memory.core lambdaroyal.memory.eviction.core])
+  :aot [lambdaroyal.memory.core lambdaroyal.memory.eviction.core lambdaroyal.memory.helper])

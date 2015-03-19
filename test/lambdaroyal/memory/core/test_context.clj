@@ -78,7 +78,9 @@
     (fact "reveal proper dependencies on the meta modell"
       (apply concat (take-while not-empty (map last (rest (iterate dependency-order [(dependency-model (-> (create-context meta-model-with-ric) deref vals))]))))) => '(:type :order :part-order))
     (fact "reveal proper collection order using the concenience function"
-      (map :name (dependency-model-ordered (-> (create-context meta-model-with-ric) deref vals))) => '(:type :order :part-order))))
+      (map :name (dependency-model-ordered (-> (create-context meta-model-with-ric) deref vals))) => '(:type :order :part-order))
+    (fact "reveal proper collection order using a model with just one collection"
+      (map :name (dependency-model-ordered (-> (create-context {:sys_state {:unique true :indexes []}}) deref vals))) => '(:sys_state))))
 
 
 
