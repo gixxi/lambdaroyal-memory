@@ -105,7 +105,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
 
 (defn create 
   "provide custom url by calling this function with varargs :url \"https://username:password@account.cloudant.com\""
-  [coll-name & args]
+  [& args]
   (let [args (apply hash-map args)
         {:keys [url prefix] :or {url (or (System/getenv "couchdb.url") "http://localhost:5984")}} args
         _ (check-couchdb-connection url)]

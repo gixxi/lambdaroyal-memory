@@ -13,20 +13,20 @@
 
 (facts "checking state model on the couch db eviction channel"
   (let [meta-model
-        {:order {:unique true :indexes [] :evictor (evict-couchdb/create :order) :evictor-delay 10}}
+        {:order {:unique true :indexes [] :evictor (evict-couchdb/create) :evictor-delay 10}}
         ctx (create-context meta-model)]
     (fact "cannot start calling user-scope functions until eviction channel is not started" (create-tx ctx) => (throws IllegalStateException))))
 
 (facts "checking state model on the couch db eviction channel"
   (let [meta-model
-        {:order {:unique true :indexes [] :evictor (evict-couchdb/create :order) :evictor-delay 10}}
+        {:order {:unique true :indexes [] :evictor (evict-couchdb/create) :evictor-delay 10}}
         ctx (create-context meta-model)
         _ @(.start (-> @ctx :order :evictor) ctx [(:order @ctx)])]
     (fact "cannot start calling user-scope functions until eviction channel is not started" (create-tx ctx) => truthy)))
 
 (facts "inserting into an empty couch db instance"
   (let [meta-model
-        {:order {:unique true :indexes [] :evictor (evict-couchdb/create :order) :evictor-delay 1000}}
+        {:order {:unique true :indexes [] :evictor (evict-couchdb/create) :evictor-delay 1000}}
         ctx (create-context meta-model)
         _ (clutch/delete-database (evict-couchdb/get-database-url (-> @ctx :order :evictor :url) (name :order)))
         _ @(.start (-> @ctx :order :evictor) ctx [(:order @ctx)])
@@ -48,7 +48,7 @@
         (-> @ctx :order :evictor :consumer deref))))
   ;;read again
   (let [meta-model
-        {:order {:unique true :indexes [] :evictor (evict-couchdb/create :order) :evictor-delay 1000}}
+        {:order {:unique true :indexes [] :evictor (evict-couchdb/create) :evictor-delay 1000}}
         ctx (create-context meta-model)
         _ @(.start (-> @ctx :order :evictor) ctx [(:order @ctx)])
         tx (create-tx ctx)
@@ -67,7 +67,7 @@
   ;;do masstest
   (fact "timing, adding 1000 to couch db and removing 500 afterwards must not take more than 10 secs"
     (first (timed (let [meta-model
-                        {:order {:unique true :indexes [] :evictor (evict-couchdb/create :order) :evictor-delay 500}}
+                        {:order {:unique true :indexes [] :evictor (evict-couchdb/create) :evictor-delay 500}}
                         ctx (create-context meta-model)
                         _ (clutch/delete-database (evict-couchdb/get-database-url (-> @ctx :order :evictor :url) (name :order)))
                         _ @(.start (-> @ctx :order :evictor) ctx [(:order @ctx)])
