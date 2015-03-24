@@ -87,10 +87,29 @@
 
 
 
+(defn merge-meta-models 
+  "merges all meta-models into a single one one weaves in the std evictor and a std eviction delay of 1 sec"
+  [evictor & maps]
+  (apply merge
+         (map 
+          #(reduce (fn [acc [k v]]
+                     (assoc acc k (assoc v :evictor-delay 1000 :evictor evictor)))
+                   {} %)
+          maps)))
 
+(comment
+  (def system-meta-model {:sys_state {:unique true :indexes [{:unique false :attributes [:action]}]}})
 
+  (def user-meta-model {:user-group {:unique true :indexes [{:unique true :attributes [:name]}]}
+                        :user {:unique true :indexes [{:unique true :attributes [:username]}] :foreign-key-constraints [{:name :group :foreign-coll :user-group :foreign-key :group}]}})
 
-
-
+  (let [evictor (evict-couchdb/create :prefix "vlic")
+        meta-model (merge-meta-models evictor system-meta-model user-meta-model)
+        ctx (create-context meta-model)]
+    (try 
+      @(.start (-> @ctx vals first :evictor) ctx (vals @ctx))
+      (finally
+        (.stop (-> @ctx vals first :evictor))
+        (-> @ctx vals first :evictor :consumer deref)))))
 
 

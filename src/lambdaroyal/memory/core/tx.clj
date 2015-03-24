@@ -2,6 +2,7 @@
   (:require (lambdaroyal.memory.core))
   (:require [lambdaroyal.memory.eviction.core :as evict])
   (:import [lambdaroyal.memory.core ConstraintException])
+  (:refer-clojure :exclude [update find])
   (:gen-class))
 
 (defn create-tx 

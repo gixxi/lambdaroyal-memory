@@ -78,14 +78,14 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
           (log-info-timed 
            "read-in collections"
            (doall 
-            (pmap
+            (map
              #(let [db (get-database this (:name %))
                     docs (clutch/all-documents db)
                     tx (create-tx ctx :force true)]
                 (do
                   (doseq [doc docs]
                     (let [{:keys [id]} doc
-                          existing (clutch/get-document (get-database this (:name %)) id)
+                          existing (clutch/get-document (get-database this (:name %)) id) 
                           user-scope-tuple (dosync
                                             (insert tx (:name %) (-> existing :unique-key first) existing))]
                       (swap! (.revs this) assoc [(:name %) (first user-scope-tuple)] (:_rev existing))))

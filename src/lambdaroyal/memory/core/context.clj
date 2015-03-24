@@ -2,6 +2,7 @@
   (require [lambdaroyal.memory.core.tx :refer :all])
   (require [lambdaroyal.memory.eviction.core :refer [create-proxy]])
   (import [lambdaroyal.memory.core.tx ReferrerIntegrityConstraint])
+  (:refer-clojure :exclude [find])
   (:gen-class))
 
 (defn referential-integrity-constraint-factory [meta-model]
