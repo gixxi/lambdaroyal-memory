@@ -111,6 +111,8 @@
   ""
   (find [this start-test start-key stop-test stop-key]
     "takes all values from the collection using this index that fulfil (start-test start-key) until the collection is fully realized or (stop-test stop-key) is fulfilled. start-test as well as stop-test are of >,>=,<,<=. The returning sequence contains of items [[uk i] (ref v)], where uk is the user-key, i is the running index for the collection and (ref v) denotes a STM reference type instance to the value v")
+  (find-without-stop [this start-test start-key]
+    "takes all values from the collection using this index that fulfil (start-test start-key) until the collection is fully realized. start-test is of >,>=,<,<=. The returning sequence contains of items [[uk i] (ref v)], where uk is the user-key, i is the running index for the collection and (ref v) denotes a STM reference type instance to the value v")
   (applicable? [this key]
     "return true iff this index can be used to find values as per the given key.")
   (rating [this key]
@@ -130,6 +132,10 @@
             start-key (create-unique-key start-key)
             stop-key (create-unique-key stop-key)]
         (map last (subseq (-> this :data deref) start-test start-key stop-test stop-key))))
+    (find-without-stop [this start-test start-key]
+      (let [this (.this this)
+            start-key (create-unique-key start-key)]
+        (map last (subseq (-> this :data deref) start-test start-key))))
     (applicable? [this key]
       (and
        (sequential? key)
@@ -182,11 +188,17 @@
             (filter
              #(satisfies? Index %) (map last (-> coll :constraints deref))))))
 
-(defn select-from-coll [coll attributes start-test start-key stop-test stop-key]
-  (let [indexes (applicable-indexes coll attributes)]
-    (if-let [index (first indexes)]
-      (.find index start-test start-key stop-test stop-key)
-      (throw (create-no-applicable-index-exception coll attributes)))))
+(defn select-from-coll 
+  ([coll attributes start-test start-key stop-test stop-key]
+                        (let [indexes (applicable-indexes coll attributes)]
+                          (if-let [index (first indexes)]
+                            (.find index start-test start-key stop-test stop-key)
+                            (throw (create-no-applicable-index-exception coll attributes)))))
+  ([coll attributes start-test start-key]
+                        (let [indexes (applicable-indexes coll attributes)]
+                          (if-let [index (first indexes)]
+                            (.find-without-stop index start-test start-key)
+                            (throw (create-no-applicable-index-exception coll attributes))))))
 
 
 (deftype
@@ -389,7 +401,11 @@
   ([tx coll-name attributes start-test start-key stop-test stop-key]
    {:pre [(contains? (-> tx :context deref) coll-name)]}
    (let [coll (get (-> tx :context deref) coll-name)]
-     (select-from-coll coll attributes start-test start-key stop-test stop-key))))
+     (map user-scope-tuple (select-from-coll coll attributes start-test start-key stop-test stop-key))))
+  ([tx coll-name attributes start-test start-key]
+   {:pre [(contains? (-> tx :context deref) coll-name)]}
+   (let [coll (get (-> tx :context deref) coll-name)]
+     (map user-scope-tuple (select-from-coll coll attributes start-test start-key)))))
 
 
 
