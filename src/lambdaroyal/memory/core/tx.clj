@@ -152,7 +152,7 @@
         (let [this (.this this) 
               user-key (attribute-values value attributes)
               unique-key (create-unique-key this user-key)]
-          (if (and unique (contains? this user-key))
+          (if (and unique (contains-key? this user-key))
             (throw (create-constraint-exception coll key (format "unique index constraint violated on index %s when precommit value %s" attributes value)))))))
     (postcommit [this ctx coll application coll-tuple]
       (cond

@@ -253,7 +253,17 @@
       (dosync
        (delete tx :type 1)) => truthy)))
 
-
+(facts "facts abount using a unique index"
+  (let [ctx (create-context {:order {:unique false :indexes [{:unique true :attributes [:no]}]}})
+        tx (create-tx ctx)]
+    (fact "must not fraud unique index"
+      (dosync
+       (insert tx :order 1 {:no 1})
+       (insert tx :order 1 {:no 1})) => (throws ConstraintException #".+?unique index constraint violated.*"))
+    (fact "must be able to use unique index"
+      (dosync
+       (insert tx :order 1 {:no 1})
+       (insert tx :order 1 {:no 2})) => truthy)))
 
 
 
