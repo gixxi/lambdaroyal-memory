@@ -190,15 +190,15 @@
 
 (defn select-from-coll 
   ([coll attributes start-test start-key stop-test stop-key]
-                        (let [indexes (applicable-indexes coll attributes)]
-                          (if-let [index (first indexes)]
-                            (.find index start-test start-key stop-test stop-key)
-                            (throw (create-no-applicable-index-exception coll attributes)))))
+   (let [indexes (applicable-indexes coll attributes)]
+     (if-let [index (first indexes)]
+       (.find index start-test start-key stop-test stop-key)
+       (throw (create-no-applicable-index-exception coll attributes)))))
   ([coll attributes start-test start-key]
-                        (let [indexes (applicable-indexes coll attributes)]
-                          (if-let [index (first indexes)]
-                            (.find-without-stop index start-test start-key)
-                            (throw (create-no-applicable-index-exception coll attributes))))))
+   (let [indexes (applicable-indexes coll attributes)]
+     (if-let [index (first indexes)]
+       (.find-without-stop index start-test start-key)
+       (throw (create-no-applicable-index-exception coll attributes))))))
 
 
 (deftype
@@ -407,8 +407,68 @@
    (let [coll (get (-> tx :context deref) coll-name)]
      (map user-scope-tuple (select-from-coll coll attributes start-test start-key)))))
 
+(defn tree-referencees
+  "takes a document [user-scope-tuple] from the collection with name [coll-name] and gives back a hash-map denoting all foreign-key referenced documents. The key in hash-map is [coll-name user-scope-key]."
+  [tx coll-name user-scope-tuple & opts]
+  {:pre [(contains? (-> tx :context deref) coll-name)]}
+  (let [opts (apply hash-map opts)]
+    (loop [todo #{[coll-name user-scope-tuple]} done (or (:cache opts) {})]
+      (if (empty? todo)
+        done
+        ;;else
+        (let [
+              ctx (-> tx :context deref)
+              coll (get ctx coll-name)
+              next (first todo)
+              constraints (map last (-> coll :constraints deref))
+              idxs (filter
+                    #(satisfies? Index %) constraints)
+              rics (filter
+                    #(instance? ReferrerIntegrityConstraint %) constraints)
+              ;;filter out all rics that denote an entity already within 'done
+              rics (remove (fn [ric]
+                             (let [foreign-key (get (-> next last last) (.foreign-key ric))]
+                               (or
+                                (nil? foreign-key)
+                                (contains? done [(.foreign-coll ric) foreign-key]))))
+                           rics)
+              done (reduce
+                    (fn [acc ric]
+                      (let [foreign-key (get (-> next last last) (.foreign-key ric))]
+                        (assoc acc [(.foreign-coll ric) foreign-key]
+                               [(.foreign-coll ric) (select-first tx (.foreign-coll ric) foreign-key)])))
+                    done
+                    rics)]
+          (recur (rest todo) done))))))
 
+(defn- replace-in-tree [tx coll-name user-scope-tuple referencees & opts]
+  (let [opts (apply hash-map opts)
+        referencees (tree-referencees tx coll-name user-scope-tuple :cache opts)
+        ctx (-> tx :context deref)
+        coll (get ctx coll-name)
+        constraints (map last (-> coll :constraints deref))
+        idxs (filter
+              #(satisfies? Index %) constraints)
+        rics (filter
+              #(instance? ReferrerIntegrityConstraint %) constraints)
+        ;;filter out all rics that are not used in user-scope-tuple
+        rics (remove (fn [ric]
+                       (nil? (get (last user-scope-tuple) (.foreign-key ric))))
+                     rics)
+        ;;get a map of key->referencee
+        merge-map (reduce
+                   (fn [acc ric]
+                     (assoc acc (.foreign-coll ric)
+                            (replace-in-tree tx (.foreign-coll ric) (last (get referencees [(.foreign-coll ric) (get (last user-scope-tuple) (.foreign-key ric))])) referencees)
+                            ))
+                   {} rics)]
+    [(first user-scope-tuple) (merge (last user-scope-tuple) merge-map)]))
 
+(defn tree
+  "takes a document [user-scope-tuple] from the collection with name [coll-name] and gives back derived document where all foreign keys are replaced by their respective documents."
+  [tx coll-name user-scope-tuple & opts]
+  {:pre [(contains? (-> tx :context deref) coll-name)]}
+  (replace-in-tree tx coll-name user-scope-tuple tree-referencees :cache {}))
 
 
 

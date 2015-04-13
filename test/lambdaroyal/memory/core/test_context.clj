@@ -30,7 +30,9 @@
    :part-order
    {:unique true :indexes [] :foreign-key-constraints [
                                                        {:name :type :foreign-coll :type :foreign-key :type}
-                                                       {:name :order :foreign-coll :order :foreign-key :order}]}})
+                                                       {:name :order :foreign-coll :order :foreign-key :order}]}
+   :line-item
+   {:unique true :indexes [] :foreign-key-constraints [{:name :part-order :foreign-coll :part-order :foreign-key :part-order}]}})
 
 (facts "facts about the created context with indexes"
   (fact "can create" (create-context meta-model-with-indexes) => truthy))
@@ -76,9 +78,9 @@
   (let [model {:order [:order-type :client] :part-order [:order :article] :article [:client] :client [] :order-type []}]
     (fact "reveal proper dependency" (apply concat (take-while not-empty (map last (rest (iterate dependency-order [model]))))) => '(:client :order-type :article :order :part-order))
     (fact "reveal proper dependencies on the meta modell"
-      (apply concat (take-while not-empty (map last (rest (iterate dependency-order [(dependency-model (-> (create-context meta-model-with-ric) deref vals))]))))) => '(:type :order :part-order))
+      (apply concat (take-while not-empty (map last (rest (iterate dependency-order [(dependency-model (-> (create-context meta-model-with-ric) deref vals))]))))) => '(:type :order :part-order :line-item))
     (fact "reveal proper collection order using the concenience function"
-      (map :name (dependency-model-ordered (-> (create-context meta-model-with-ric) deref vals))) => '(:type :order :part-order))
+      (map :name (dependency-model-ordered (-> (create-context meta-model-with-ric) deref vals))) => '(:type :order :part-order :line-item))
     (fact "reveal proper collection order using a model with just one collection"
       (map :name (dependency-model-ordered (-> (create-context {:sys_state {:unique true :indexes []}}) deref vals))) => '(:sys_state))))
 
