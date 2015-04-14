@@ -286,4 +286,4 @@
                     (insert tx :part-order 1 {:type 1 :order 1 :gaga "baba"})
                     (insert tx :line-item 1 {:no 1 :part-order 1}))
             (tree tx :line-item (select-first tx :line-item 1)))))
-  => [[1 1N] {:no 1, :part-order [[1 1N] {:gaga "baba", :order [[1 1N] {:name :foo}], :type [[1 1N] {}]}]}])
+  => [[1 1N] {:coll :line-item, :no 1, :part-order [[1 1N] {:coll :part-order, :gaga "baba", :order [[1 1N] {:coll :order, :name :foo}], :type [[1 1N] {:coll :type}]}]}])

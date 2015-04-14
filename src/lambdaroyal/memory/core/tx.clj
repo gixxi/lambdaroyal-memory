@@ -442,8 +442,7 @@
           (recur (rest todo) done))))))
 
 (defn- replace-in-tree [tx coll-name user-scope-tuple referencees & opts]
-  (let [opts (apply hash-map opts)
-        referencees (tree-referencees tx coll-name user-scope-tuple :cache opts)
+  (let [referencees (apply tree-referencees tx coll-name user-scope-tuple opts)
         ctx (-> tx :context deref)
         coll (get ctx coll-name)
         constraints (map last (-> coll :constraints deref))
@@ -459,10 +458,12 @@
         merge-map (reduce
                    (fn [acc ric]
                      (assoc acc (.foreign-coll ric)
-                            (replace-in-tree tx (.foreign-coll ric) (last (get referencees [(.foreign-coll ric) (get (last user-scope-tuple) (.foreign-key ric))])) referencees)
+                            (apply replace-in-tree tx (.foreign-coll ric) (last (get referencees [(.foreign-coll ric) (get (last user-scope-tuple) (.foreign-key ric))])) referencees opts)
                             ))
                    {} rics)]
-    [(first user-scope-tuple) (merge (last user-scope-tuple) merge-map)]))
+    [(first user-scope-tuple) (assoc 
+                                  (merge (last user-scope-tuple) merge-map)
+                                :coll coll-name)]))
 
 (defn tree
   "takes a document [user-scope-tuple] from the collection with name [coll-name] and gives back derived document where all foreign keys are replaced by their respective documents."
