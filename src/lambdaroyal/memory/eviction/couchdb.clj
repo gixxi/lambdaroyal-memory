@@ -10,12 +10,17 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
            [clojure.string :as str]
            [clojure.java.io :as io]
            [clojure.tools.logging :as log]
-           [clojure.set :refer [union]]))
+           [clojure.set :refer [union]])
+  (import [java.net ConnectException]))
 
 (defn- check-couchdb-connection [url]
-  (if-not 
-      (= "Welcome" (:couchdb (clutch/couchdb-info url)))
-    (throw (IllegalArgumentException. (format "Cannot access Couch DB server on %s" url)))))
+  (let [e (format "Cannot access Couch DB server on %s. Did you start it (probably by sudo /usr/local/etc/init.d/couchdb start" url)]
+    (try
+      (if-not 
+          (= "Welcome" (:couchdb (clutch/couchdb-info url)))
+        (throw (IllegalArgumentException. e)))
+      (catch ConnectException ex 
+        (throw (IllegalStateException. e ex))))))
 
 (defn get-database-url [url db-name]
   (utils/url (utils/url url) db-name))
