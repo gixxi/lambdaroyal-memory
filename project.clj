@@ -5,6 +5,7 @@
             :url "http://www.gnu.org/copyleft/gpl.html"}
   :dependencies [[org.clojure/clojure "1.7.0-alpha5"]
                  [org.clojure/core.typed "0.2.77"]
+                 [org.clojure/core.async "0.1.346.0-17112a-alpha"]
                  [com.ashafa/clutch "0.4.0"]
                  [org.clojure/tools.logging "0.3.1"]
                  [org.slf4j/slf4j-log4j12 "1.7.1"]
