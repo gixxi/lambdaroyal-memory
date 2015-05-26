@@ -265,6 +265,11 @@
   [[k r]]
   [k @r])
 
+(defn user-scope-key
+  "takes a user-scope-tuple into account and returns the user scope key that was provided when storing this document"
+  [user-scope-tuple]
+  (-> user-scope-tuple first first))
+
 (defn insert [tx coll-name key value]
   "inserts a document [value] by key [key] into collection with name [coll-name] using the transaction [tx]. the transaction can be created from context using (create-tx [context])"
   {:pre [(contains? (-> tx :context deref) coll-name)]}
