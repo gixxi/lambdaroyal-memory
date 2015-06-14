@@ -1,6 +1,12 @@
 (ns lambdaroyal.memory.abstraction.search
-  (require [clojure.core.async :refer [>! <! alts! timeout chan go]])
-  (:gen-class))
+  (:require [clojure.core.typed :as t]
+            [clojure.core.async :refer [>! <! alts! timeout chan go]]))
+
+;; --------------------------------------------------------------------
+;; TYPE ABSTRACTIONS
+;; --------------------------------------------------------------------
+
+(t/defalias TMap (t/Map t/Any t/Any))
 
 (defn abstract-search 
   "higher order function - takes a function [fn] that returns a lazy sequence [s] of user-scope tuples from lambdaroyal memory. This function returns a function that returns a channel where the result of the function fn, s is pushed to"
@@ -46,3 +52,47 @@
             (if next (agr next))
             ;;loop - wait for the next
             (recur (inc i) (nil? next))))))))
+
+;; --------------------------------------------------------------------
+;; BUILDING A DATA HIERARCHIE
+;; CR - https://github.com/gixxi/lambdaroyal-memory/issues/1
+;; This allows to build a hierarchie of documents as per hierarchie 
+;; levels. A hierarchie level denotes an attribute of the document - 
+;; either directly (first level attribute) or indirectly by applying 
+;; a function to the document
+;; --------------------------------------------------------------------
+
+;;(t/ann hierarchie [t/Any t/Kw * -> t/Any])
+(defn hierarchie 
+  "[level] is variable arity set of keywords or function taking a document into account and providing back a category. [handler] is a function applied to the leafs of the hierarchie. Using identity as function will result the documents as leafs."
+  [xs handler & levels]
+  (if levels
+    (let [level (first levels)
+          next (rest levels)
+          xs' (group-by #(level (last %)) xs)
+          xs'' (pmap 
+                (fn [[k v]]
+                  [[k (count v)]
+                   (apply hierarchie v handler next)])
+                xs')]
+      xs'')
+    ;;else
+    (if handler (handler xs) 
+        ;;else
+        xs)))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

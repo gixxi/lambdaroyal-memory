@@ -3,7 +3,8 @@
            [lambdaroyal.memory.core.tx :refer :all]
            [lambdaroyal.memory.core.context :refer :all]
            [lambdaroyal.memory.helper :refer :all]
-           [lambdaroyal.memory.abstraction.search :refer :all])
+           [lambdaroyal.memory.abstraction.search :refer :all]
+           [clojure.test :refer :all])
   (import [lambdaroyal.memory.core ConstraintException]))
 
 
@@ -66,6 +67,16 @@
                          :minority-report 1
                          :finish-callback (fn [] (deliver result-promise @result)))
         (count @result-promise)) => 10000)))
+
+(facts "checking hierarchie builder"
+  (let [data [[1 {:size :big :color :red}] [2 {:size :big :color :green}]]]
+    (fact (hierarchie data identity :size :col) => '([[:big 2] ([[nil 2] [[1 {:color :red, :size :big}] [2 {:color :green, :size :big}]]])]))
+    (fact (hierarchie data identity :size #(:col %)) => '([[:big 2] ([[nil 2] [[1 {:color :red, :size :big}] [2 {:color :green, :size :big}]]])]))
+    (fact (hierarchie data identity :size (fn [d] (get d :color))) => '([[:big 2] ([[:red 1] [[1 {:color :red, :size :big}]]] [[:green 1] [[2 {:color :green, :size :big}]]])]))
+    (fact (hierarchie data #(count %) :size (fn [d] (get d :color))) => '([[:big 2] ([[:red 1] 1] [[:green 1] 1])]))))
+
+
+
 
 
 
