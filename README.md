@@ -32,7 +32,7 @@ lambdaroyal-memory is an in-memory database, that primarily recides in the volat
 
 ## Speed
 
-Runtime for inserting 3000 complex documents with several secondary indexes and referential integrity constraints by 10 concurrent actors. This charts get updated using *lein midje*
+Runtime for inserting 30000 complex documents with several secondary indexes and referential integrity constraints by 10 concurrent actors. This charts get updated using *lein midje*
 
 ![](https://raw.githubusercontent.com/gixxi/lambdaroyal-memory/master/test/stats/30000insertsBy10Threads.png)
 
