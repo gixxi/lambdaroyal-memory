@@ -30,6 +30,12 @@ Maven
 
 lambdaroyal-memory is an in-memory database, that primarily recides in the volatile main memory. Either occasionally or always write operations are flushed to a persistent backup storage.
 
+## Speed
+
+Runtime for inserting 3000 complex documents with several secondary indexes and referential integrity constraints by 10 concurrent actors. This charts get updated using *lein midje*
+
+![](https://raw.githubusercontent.com/gixxi/lambdaroyal-memory/master/test/stats/30000insertsBy10Threads.png.png)
+
 ## Conceptual Data Model
 
 lambdaroyal-memory stores user data as key/value pairs, where the key is
