@@ -36,6 +36,15 @@ Runtime for inserting 30000 complex documents with several secondary indexes and
 
 ![](https://raw.githubusercontent.com/gixxi/lambdaroyal-memory/master/test/stats/30000insertsBy10Threads.png)
 
+Machine & Runtime Specs
+
+```
+Memory:        3970036 kB
+CPU:           Intel(R) Core(TM) i5-2467M CPU @ 1.60GHz
+Java HotSpot(TM) 64-Bit Server VM (build 25.40-b25, mixed mode)
+org.clojure/clojure "1.7.0-alpha5"
+```
+
 ## Conceptual Data Model
 
 lambdaroyal-memory stores user data as key/value pairs, where the key is
