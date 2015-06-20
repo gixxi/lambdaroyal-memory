@@ -19,7 +19,7 @@
 
 (facts "checking state model on the couch db eviction channel"
   (let [meta-model
-        {:order {:unique true :indexes [] :evictor (evict-couchdb/create) :evictor-delay 10}}
+        {:order {:indexes [] :evictor (evict-couchdb/create) :evictor-delay 10}}
         ctx (create-context meta-model)
         _ @(.start (-> @ctx :order :evictor) ctx [(:order @ctx)])]
     (fact "cannot start calling user-scope functions until eviction channel is not started" (create-tx ctx) => truthy)))

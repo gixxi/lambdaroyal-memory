@@ -6,33 +6,33 @@
 (def meta-model
   {
    :order
-   {:unique true :indexes []}
+   {:indexes []}
    :part-order
-   {:unique true :indexes []}
+   {:indexes []}
    :interaction
    {:indexes []}})
 
 (def meta-model-with-indexes
   {
    :order
-   {:unique true :indexes [{:name :client :unique false :attributes [:client]}
+   {:indexes [{:name :client :unique false :attributes [:client]}
                            {:name :client-no :unique false :attributes [:client :no]}]}
    :part-order
-   {:unique true :indexes []}
+   {:indexes []}
    :interaction
    {:indexes [{:attributes [:keyword]}]}})
 
 (def meta-model-with-ric
   {:type
-   {:unique true :indexes []}
+   {:indexes []}
    :order
-   {:unique true :indexes []}
+   {:indexes []}
    :part-order
-   {:unique true :indexes [] :foreign-key-constraints [
+   {:indexes [] :foreign-key-constraints [
                                                        {:name :type :foreign-coll :type :foreign-key :type}
                                                        {:name :order :foreign-coll :order :foreign-key :order}]}
    :line-item
-   {:unique true :indexes [] :foreign-key-constraints [{:name :part-order :foreign-coll :part-order :foreign-key :part-order}]}})
+   {:indexes [] :foreign-key-constraints [{:name :part-order :foreign-coll :part-order :foreign-key :part-order}]}})
 
 (facts "facts about the created context with indexes"
   (fact "can create" (create-context meta-model-with-indexes) => truthy))
@@ -46,15 +46,7 @@
     (fact "context must contain a collection :part-order"
       (-> @ctx :part-order) => truthy)
     (fact "context must contain a collection :interaction"
-      (-> @ctx :interaction) => truthy)
-    (fact "collections order as well as part-order must contain unique constraint"
-      (set 
-       (map 
-        first 
-        (filter 
-         (fn [[k v]] (if-let [constraint (-> v :constraints deref :unique-key)]
-                       (instance? Constraint constraint)))
-         @ctx))) => #{:order :part-order})))
+      (-> @ctx :interaction) => truthy)))
 
 (facts "facts abount context creation with referential integrity constraints (RIC)"
   (let [rics (map (fn [[coll constraint]] [coll constraint]) (referential-integrity-constraint-factory meta-model-with-ric))
@@ -74,7 +66,7 @@
       (fact "RIC is not duplicated falsey" ric => falsey))))
 
 
-(facts "testing the y-combinator used build the dependency model"
+(facts "testing the y-combinator to used build the dependency model"
   (let [model {:order [:order-type :client] :part-order [:order :article] :article [:client] :client [] :order-type []}]
     (fact "reveal proper dependency" (apply concat (take-while not-empty (map last (rest (iterate dependency-order [model]))))) => '(:client :order-type :article :order :part-order))
     (fact "reveal proper dependencies on the meta modell"
@@ -82,7 +74,7 @@
     (fact "reveal proper collection order using the concenience function"
       (map :name (dependency-model-ordered (-> (create-context meta-model-with-ric) deref vals))) => '(:type :order :part-order :line-item))
     (fact "reveal proper collection order using a model with just one collection"
-      (map :name (dependency-model-ordered (-> (create-context {:sys_state {:unique true :indexes []}}) deref vals))) => '(:sys_state))))
+      (map :name (dependency-model-ordered (-> (create-context {:sys_state {:indexes []}}) deref vals))) => '(:sys_state))))
 
 
 

@@ -45,7 +45,7 @@
       (dosync (delete tx :order :b)) => 0)
     (fact "delete by unique key the first time succeeds"
       (dosync (delete tx :order (first tuple-a-by-key))) => 1)
-    (fact "delete by unique key the first time fails"
+    (fact "delete by unique key the second time fails"
       (dosync (delete tx :order (first tuple-a-by-key))) => 0)))
 
 (facts "check insert into collection with unique key constraint"
@@ -109,7 +109,7 @@
   (facts "check select-first, select, delete-by-select and inserting to non-unique collections"
     (dosync
      (doall (repeatedly 1000 #(insert tx :order (alter counter inc) {:orell :meisi :anne :iben})))
-     (doall (repeatedly 2 #(insert tx :interaction 1 {})))
+     (doall (repeatedly 2 #(insert tx :interaction (alter counter inc) {})))
      (fact "select first on existing must work"
        (-> (select-first tx :order 500) last) => {:orell :meisi :anne :iben})
      (fact "select all elements must reveal all elements"
@@ -119,7 +119,7 @@
      (fact "select subset ..."
        (count (select tx :order >= 500 < 700)) => 200)
      (doseq [i (select tx :order >= 500 < 700)]
-       (delete tx :order (-> i first first)))
+       (delete tx :order (-> i first)))
      (fact "delete-by-select must reveal intersection"
        (count (select tx :order > 0)) => 800))))
 
@@ -254,16 +254,16 @@
        (delete tx :type 1)) => truthy)))
 
 (facts "facts abount using a unique index"
-  (let [ctx (create-context {:order {:unique false :indexes [{:unique true :attributes [:no]}]}})
+  (let [ctx (create-context {:order {:indexes [{:unique true :attributes [:no]}]}})
         tx (create-tx ctx)]
     (fact "must not fraud unique index"
       (dosync
        (insert tx :order 1 {:no 1})
-       (insert tx :order 1 {:no 1})) => (throws ConstraintException #".+?unique index constraint violated.*"))
+       (insert tx :order 2 {:no 1})) => (throws ConstraintException #".+?unique index constraint violated.*"))
     (fact "must be able to use unique index"
       (dosync
-       (insert tx :order 1 {:no 1})
-       (insert tx :order 1 {:no 2})) => truthy)))
+       (insert tx :order 3 {:no 2})
+       (insert tx :order 4 {:no 3})) => truthy)))
 
 (fact "building the tree referencees for a user-scope-tuple" 
   (time (let [rics (map #(-> % last .name) (referential-integrity-constraint-factory meta-model-with-ric))
@@ -274,7 +274,7 @@
                     (insert tx :order 1 {:name :foo})
                     (insert tx :part-order 1 {:type 1 :order 1 :gaga "baba"}))
             (tree-referencees tx :part-order (select-first tx :part-order 1))))) 
-  => {[:order 1] [:order [[1 1N] {:name :foo}]], [:type 1] [:type [[1 1N] {}]]})
+  => {[:order 1] [:order [1 {:name :foo}]], [:type 1] [:type [1 {}]]})
 
 (fact "building the tree for a user-scope-tuple" 
   (time (let [rics (map #(-> % last .name) (referential-integrity-constraint-factory meta-model-with-ric))
@@ -286,4 +286,4 @@
                     (insert tx :part-order 1 {:type 1 :order 1 :gaga "baba"})
                     (insert tx :line-item 1 {:no 1 :part-order 1}))
             (tree tx :line-item (select-first tx :line-item 1)))))
-  => [[1 1N] {:coll :line-item, :no 1, :part-order [[1 1N] {:coll :part-order, :gaga "baba", :order [[1 1N] {:coll :order, :name :foo}], :type [[1 1N] {:coll :type}]}]}])
+  => [1 {:coll :line-item, :no 1, :part-order [1 {:coll :part-order, :gaga "baba", :order [1 {:coll :order, :name :foo}], :type [1 {:coll :type}]}]}])

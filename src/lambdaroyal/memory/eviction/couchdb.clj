@@ -92,7 +92,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
                     (let [{:keys [id]} doc
                           existing (clutch/get-document (get-database this (:name %)) id) 
                           user-scope-tuple (dosync
-                                            (insert tx (:name %) (-> existing :unique-key first) existing))]
+                                            (insert tx (:name %) (-> existing :unique-key) existing))]
                       (swap! (.revs this) assoc [(:name %) (first user-scope-tuple)] (:_rev existing))))
                   (log/info (format "collection %s contains %d documents" (:name %) (count docs)))))
              colls)))

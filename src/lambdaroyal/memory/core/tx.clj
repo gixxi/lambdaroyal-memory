@@ -5,6 +5,8 @@
   (:refer-clojure :exclude [update find])
   (:gen-class))
 
+(def ^:const debug (atom false))
+
 (defn create-tx 
   "creates a transaction upon user-scope function like select, insert, alter-document, delete can be executed. Iff an eviction channel is assigned to a collection then this channel needs to be started otherwise a "
   [ctx & opts]
@@ -29,7 +31,9 @@
 (defn create-no-applicable-index-exception [coll key]
   (lambdaroyal.memory.core.ConstraintException. (format "Lambdaroyal-Memory No applicable index defined for key %s on collection [%s]" key (:name coll))))
 
-(defn- evictor-watch [coll]
+(defn- evictor-watch 
+  "returns an stm ref watch that calls the evictor when inserting the stm ref, when updating the respetive value and when deleting the stm ref"
+  [coll]
   (fn [watch ref old new]
     (if-let [evictor (-> coll :evictor)]
       (let [_ (comment (println :evict :ref ref :meta (meta ref) :old old :new new))
@@ -79,26 +83,12 @@
   [coll key]
   (with-meta [key (-> coll :running deref inc)] {:unique-key true}))
 
-(defmulti find-first "returns the first collection tuple whose key is equal to the user key [key]. This multimethod supports both user keys as well as unique keys as inputs. this is not a userscope method." (fn [coll key] (is-unique-key? key)))
+(defn find-first "returns the first collection tuple whose key is equal to the user key [key]. This is not a userscope method."
+    [coll key]
+    (if-let [v (get (-> coll :data deref) key)]
+      [key v]))
 
-(defmethod find-first false
-  [coll key]
-  (let [sub (subseq (-> coll :data deref) >= (create-unique-key key))]
-    (first sub)))
-
-(defmethod find-first true
-  [coll key]
-  (if-let [v (get (-> coll :data deref) key)]
-    [key v]))
-
-(defmulti contains-key? "returns true iff the collection [coll] contains a tuple whose key is equal to the user key [key]. This multimethod supports both user keys as well as unique keys as inputs." (fn [coll key] (is-unique-key? key)))
-
-(defmethod contains-key? false
-  [coll key]
-  (let [f (find-first coll key)]
-    (and f (= key (-> f first first)))))
-
-(defmethod contains-key? true
+(defn contains-key? "returns true iff the collection [coll] contains a tuple whose key is equal to the user key [key]."
   [coll key]
   (contains? (-> coll :data deref) key))
 
@@ -130,7 +120,8 @@
     (find [this start-test start-key stop-test stop-key]
       (let [this (.this this)
             start-key (create-unique-key start-key)
-            stop-key (create-unique-key stop-key)]
+            stop-key (create-unique-key stop-key)
+            data (-> this :data deref)]
         (map last (subseq (-> this :data deref) start-test start-key stop-test stop-key))))
     (find-without-stop [this start-test start-key]
       (let [this (.this this)
@@ -149,11 +140,14 @@
     (application [this] #{:insert :delete})
     (precommit [this ctx coll application key value]
       (if (= :insert application)
-        (let [this (.this this) 
-              user-key (attribute-values value attributes)
-              unique-key (create-unique-key this user-key)]
-          (if (and unique (contains-key? this user-key))
-            (throw (create-constraint-exception coll key (format "unique index constraint violated on index %s when precommit value %s" attributes value)))))))
+        (let [user-key (attribute-values value attributes)
+              unique-key (create-unique-key (.this this) user-key)]
+          (if unique 
+            (if-let [match (first (.find-without-stop this >= user-key))]
+              (do
+                (println :user-key user-key :match match)
+                (if (= user-key (attribute-values (-> match last deref) attributes))
+                  (throw (create-constraint-exception coll key (format "unique index constraint violated on index %s when precommit value %s" attributes value))))))))))
     (postcommit [this ctx coll application coll-tuple]
       (cond
        (= :insert application)
@@ -166,7 +160,7 @@
        (= :delete application)
        (if coll-tuple
          (let [this (.this this) 
-               idx-keys (-> coll-tuple last get-idx-keys)]
+               idx-keys (-> coll-tuple get-idx-keys)]
            (if-let [idx-key (get @idx-keys name)]
              (alter (:data this) dissoc idx-key)
              (throw (RuntimeException. (format "FATAL RUNTIME EXCEPTION: index %s is inconsistent, failed to remove key %s from value-wrapper %s. Failed to reverse lookup index key." name coll-tuple)))))))))
@@ -232,8 +226,8 @@
     (precommit [this ctx coll application key value]
       {:pre [(contains? ctx referencing-coll)]}
       (let [;;select the referencee using the automatically generated index on the referencing-key
-            subs (select-from-coll (get ctx referencing-coll) [referencing-key] >= [key] < (stage-next-unique-key (get ctx referencing-coll) [key]))]
-        (if-not (empty? subs)
+            match (first (select-from-coll (get ctx referencing-coll) [referencing-key] >= [key]))]
+        (if (and match (= (-> match meta :unique-key)))
           (throw (create-constraint-exception coll key (format "referenced integrity constraint violated. a document with key %s within collection %s references this document" referencing-coll referencing-key))))))
     (postcommit [this ctx coll application coll-tuple] nil))
 
@@ -268,7 +262,7 @@
 (defn user-scope-key
   "takes a user-scope-tuple into account and returns the user scope key that was provided when storing this document"
   [user-scope-tuple]
-  (-> user-scope-tuple first first))
+  (-> user-scope-tuple first))
 
 (defn insert [tx coll-name key value]
   "inserts a document [value] by key [key] into collection with name [coll-name] using the transaction [tx]. the transaction can be created from context using (create-tx [context])"
@@ -276,11 +270,10 @@
   (let [ctx (-> tx :context deref)
         coll (get ctx coll-name)
         data (:data coll)
-        unique-key (create-unique-key coll key)
-        coll-tuple [unique-key (value-wrapper coll unique-key value)]]
+        coll-tuple [key (value-wrapper coll key value)]]
     (do
       (process-constraints :insert precommit ctx coll key value)
-      (alter data assoc unique-key (last coll-tuple))
+      (alter data assoc key (last coll-tuple))
       (process-constraints :insert postcommit ctx coll coll-tuple)
       (user-scope-tuple coll-tuple))))
 
@@ -301,7 +294,7 @@
               (alter (-> idx .this :data) assoc new-unique-index-key coll-tuple)
               ;;alter reverse lookup
               (alter idx-keys assoc (.name idx) new-unique-index-key)
-              (comment (println (.name idx) :old old-user-value :new new-user-value :old-a old-attribute-values :new-a new-attribute-values :idx-keys idx-keys))
+              (comment (print (.name idx) :old old-user-value :new new-user-value :old-a old-attribute-values :new-a new-attribute-values :idx-keys idx-keys))
               ))
           (throw (RuntimeException. (format "FATAL RUNTIME EXCEPTION: index %s is inconsistent, failed to remove key %s from value-wrapper %s. Failed to reverse lookup index key." name coll-tuple))))))))
 
@@ -330,31 +323,8 @@
         (alter-index idx coll-tuple old-user-value new-user-value))
       new-user-value)))
 
-(defmulti delete 
-  "deletes a document by key [key] from collection with name [coll-name] using the transaction [tx]. the transaction can be created from context using (create-tx [context]. returns number of removed items. works both with user keys as well as unique keys)"
-  (fn [tx coll-name key] (is-unique-key? key)))
-
-(defmethod delete false
-  [tx coll-name key]
-  {:pre [(contains? (-> tx :context deref) coll-name)]}
-  (let [ctx (-> tx :context deref)
-        coll (get ctx coll-name)
-        data (:data coll)
-        sub (subseq @data >= (create-unique-key key))]
-    (let [tuples-to-delete (take-while #(= key (-> % first first)) sub)]
-      (doseq [x tuples-to-delete]
-        (process-constraints :delete precommit ctx coll key (-> x last deref))
-        (alter data dissoc (first x))
-        (process-constraints :delete postcommit ctx coll x)
-        (alter-meta! (last x) assoc :deleted true)
-        ;;set again to notify eviction watches
-        (ref-set (last x) (->  x last deref)))
-      (count tuples-to-delete))))
-
-(defn- user-key [k]
-  (first k))
-
-(defmethod delete true
+(defn delete 
+  "deletes a document by key [key] from collection with name [coll-name] using the transaction [tx]. the transaction can be created from context using (create-tx [context]. returns number of removed items."
   [tx coll-name key]
   {:pre [(contains? (-> tx :context deref) coll-name)]}
   (let [ctx (-> tx :context deref)
@@ -362,7 +332,7 @@
         data (:data coll)]
     (if-let [x (get @data key)]
       (do
-        (process-constraints :delete precommit ctx coll (user-key key) @x)
+        (process-constraints :delete precommit ctx coll key @x)
         (alter data dissoc key)
         (process-constraints :delete postcommit ctx coll x)
         (alter-meta! x assoc :deleted true)
@@ -395,12 +365,12 @@
   which (test (.. sc comparator (compare ek key)) 0) is true"
   ([tx coll-name start-test start-key]
    {:pre [(contains? (-> tx :context deref) coll-name)]}
-   (let [sub (subseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test (create-unique-key start-key))]
+   (let [sub (subseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test start-key)]
      (map user-scope-tuple sub)))
 
   ([tx coll-name start-test start-key stop-test stop-key]
    {:pre [(contains? (-> tx :context deref) coll-name)]}
-   (let [sub (subseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test (create-unique-key start-key) stop-test (create-unique-key stop-key))]
+   (let [sub (subseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test start-key stop-test stop-key)]
      (map user-scope-tuple sub)))
 
   ([tx coll-name attributes start-test start-key stop-test stop-key]

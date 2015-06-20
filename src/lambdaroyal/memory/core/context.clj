@@ -29,9 +29,8 @@
 (defn- create-collection [collection meta-model referential-integrity-constraints]
   (let [fn-constraint-factory 
         (fn [collection]
-          (if (:unique collection)
-            {:unique-key (create-unique-key-constraint)}
-            {}))
+          ;;we assume all collections to be unique (CR 20150620)
+          {:unique-key (create-unique-key-constraint)})
         fn-index-factory 
         (fn [collection]
           (reduce
@@ -98,13 +97,4 @@
   (let [names (apply concat (take-while not-empty (map last (rest (iterate dependency-order [(dependency-model colls)])))))
         coll-by-name (zipmap (map :name colls) colls)]
     (map #(get coll-by-name %) names)))
-
-
-
-
-
-
-
-
-
 

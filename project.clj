@@ -1,4 +1,4 @@
-(defproject org.clojars.gixxi/lambdaroyal-memory "0.2-SNAPSHOT"
+(defproject org.clojars.gixxi/lambdaroyal-memory "0.3-SNAPSHOT"
   :description "STM-based in-memory database storing persistent data structures"
   :url "https://github.com/gixxi/lambdaroyal-memory"
   :license {:name "GPL v3"

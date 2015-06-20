@@ -17,16 +17,16 @@
 
 (def meta-model
   {:type
-   {:unique true :indexes []}
+   {:indexes []}
    :order
-   {:unique true :indexes [{:name :client :unique false :attributes [:client]}
+   {:indexes [{:name :client :unique false :attributes [:client]}
                            {:name :client-no :unique false :attributes [:client :no]}]}
    :part-order
-   {:unique true :indexes [] :foreign-key-constraints [
+   {:indexes [] :foreign-key-constraints [
                                                        {:name :type :foreign-coll :type :foreign-key :type}
                                                        {:name :order :foreign-coll :order :foreign-key :order}]}
    :line-item
-   {:unique true :indexes [] :foreign-key-constraints [{:name :part-order :foreign-coll :part-order :foreign-key :part-order}]}})
+   {:indexes [] :foreign-key-constraints [{:name :part-order :foreign-coll :part-order :foreign-key :part-order}]}})
 
 (defn- insert-future [ctx prefix]
   "spawns a thread that starts 100 consecutive transactions, each transaction consists of 10 inserts"
