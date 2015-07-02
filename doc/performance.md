@@ -20,6 +20,10 @@ In our example data is hierachical, meaning that a set of documents of collectio
 
 ![](https://raw.githubusercontent.com/gixxi/lambdaroyal-memory/master/design/current.datastructures/performanceunittest.png)
 
+Denormalizing gives back a flat structure denoted by the following picture. From a technical point of view denormalizing is performed by replacing a foreign key by the document denoted by the foreign key. In layman terms, denormalizing performs all necessary read operations that get all the foreign data (directly and transitively) referenced by the document passed into the denormalization function.
+
+![](https://raw.githubusercontent.com/gixxi/lambdaroyal-memory/master/design/current.datastructures/performanceunittest_denormalized.png)
+
 # How to update the performance indicators herein
 
 * run ```lein midje```
