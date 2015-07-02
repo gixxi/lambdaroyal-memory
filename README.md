@@ -36,6 +36,8 @@ Runtime for inserting 30000 complex documents with several secondary indexes and
 
 ![](https://raw.githubusercontent.com/gixxi/lambdaroyal-memory/master/test/stats/30000insertsBy10Threads.png)
 
+[More on performance](https://github.com/gixxi/lambdaroyal-memory/blob/master/doc/performance.md)
+
 Machine & Runtime Specs
 
 ```
