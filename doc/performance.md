@@ -24,6 +24,14 @@ Denormalizing gives back a flat structure denoted by the following picture. From
 
 ![](https://raw.githubusercontent.com/gixxi/lambdaroyal-memory/master/design/current.datastructures/performanceunittest_denormalized.png)
 
+## What is hierarchie
+
+Here hierachie denotes grouping the data into certain categories. For each value of the first category the grouping is applied recursivly to the rest of the categories. One can use such a hierarchie to search for documents matching certain category values.
+
+## Performance
+
+![](https://raw.githubusercontent.com/gixxi/lambdaroyal-memory/master/test/stats/1000Orders.png)
+
 # How to update the performance indicators herein
 
 * run ```lein midje```
