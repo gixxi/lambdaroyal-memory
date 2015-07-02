@@ -4,6 +4,7 @@
   lambdaroyal.memory.core.test-tx-perf
   (:require [midje.sweet :refer :all]
             [lambdaroyal.memory.core.tx :refer :all]
+            [lambdaroyal.memory.abstraction.search :refer :all]
             [lambdaroyal.memory.core.context :refer :all]
             [lambdaroyal.memory.helper :refer :all]
             [clojure.core.async :refer [>! alts!! timeout chan go]]
@@ -67,8 +68,53 @@
     (go (>! c (apply f args)))
     (first (alts!! [c (timeout ms)]))))
 
+(defn shortpath [[x y]]
+  [#(-> % last x) #(-> % last y)])
 
+(facts "inserting 10³ Orders, each with 4-6 partOrders, each partorder with 10-20 lineitems -> 75000 line items"
+  (let [modes '(:post :express :pick-up :store)
+        targets (range 10)
+        deliverers '(:fedex :dhl :post)
+        articles '(:banana :apple :peach :plum)
+        batches '(:old :new :smelling)
+        poid (atom 0)
+        liid (atom 0)
+        ctx (create-context meta-model)
+        tx (create-tx ctx)
+        _ (dosync (insert tx :type 1 {}))
+        bulk (timed
+              (dosync
+               (doseq [x (range 1000)]
+                 (insert tx :order x {:mode (rand-nth modes) :deliverer (rand-nth deliverers)})
+                 (doseq [y (repeatedly (+ 4 (rand-int 3)) #(swap! poid inc))]
+                   (insert tx :part-order y {:order x :type 1 :target (rand-nth targets)})
+                   (doseq [z (repeatedly (+ 10 (rand-int 10)) #(swap! liid inc))]
+                     (insert tx :line-item z {:part-order y :amount (rand-int 1000) :article (rand-nth articles) :batch (rand-nth batches)}))))))
+        _ (println "test took (ms) " (first bulk))
+        lineitems (select tx :line-item >= 0)
+        trees (timed (doall (map #(tree tx :line-item %) lineitems)))
+        _ (println "build document trees took (ms) " (first trees))
+        hierarchie-simple-count (timed 
+                                 (hierarchie (last trees) count 
+                                             #(-> % last :article)
+                                             #(-> % last :batch)
+                                             #(-> % last :part-order last :order last :deliverer)
+                                             #(-> % last :part-order last :order last :mode)))
+        _ (println "building a counting hierarchie :article :batch :deliverer :mode took (ms)" (first hierarchie-simple-count))
 
+        hierarchie-simple-data (timed 
+                                 (hierarchie (last trees) identity 
+                                             #(-> % last :article)
+                                             #(-> % last :batch)
+                                             #(-> % last :part-order last :order last :deliverer)
+                                             #(-> % last :part-order last :order last :mode)))
+        _ (println "building a data hierarchie :article :batch :deliverer :mode took (ms)" (first hierarchie-simple-data))
+
+        _ (append-to-timeseries "1000Orders" (apply str (interpose ";" [(first bulk) (first trees) (first hierarchie-simple-count) (first hierarchie-simple-data)])))
+]
+    (fact "all elements inserted" (-> ctx deref :order :data deref count) => 1000)
+    (fact "check quantities" (-> ctx deref :line-item :data deref count) => (roughly 50000 100000))
+    (fact "max time for sequential inserts" (first bulk) => (roughly 0 150000))))
 
 
 

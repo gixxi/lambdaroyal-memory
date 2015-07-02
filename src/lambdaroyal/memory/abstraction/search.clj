@@ -69,7 +69,7 @@
   (if levels
     (let [level (first levels)
           next (rest levels)
-          xs' (group-by #(level (last %)) xs)
+          xs' (group-by #(level %) xs)
           xs'' (pmap 
                 (fn [[k v]]
                   [[k (count v)]
@@ -81,7 +81,25 @@
         ;;else
         xs)))
 
-
+(defn hierarchie-ext 
+  "builds up a hierarchie where a node is given by it's key (level discriminator), a map containing extra info that are characteristic for (an arbitrary) document that fits into this hierarchie as well as all the matching documents classified by the values of the next category (if any) or the matching documents as subnodes.
+  [level] is variable arity set of taking a document into account and providing back a tuple [category ext], where category is a keyword or function providing back the category of a document whereas ext is a keyword or function providing back the the characteristics of a document with respect to the category. [handler] is a function applied to the leafs of the hierarchie. Using identity as function will result the documents as leafs."
+  [xs handler & levels]
+  (if levels
+    (let [level (first levels)
+          next (rest levels)]
+      (let [[level-category level-ext] level
+            xs' (group-by #(level-category %) xs)
+            xs'' (pmap 
+                  (fn [[k v]]
+                    [[k (count v) (if level-ext (level-ext (first v)) nil)]
+                     (apply hierarchie-ext v handler next)])
+                  xs')]
+        xs''))
+    ;;else
+    (if handler (handler xs) 
+        ;;else
+        xs)))
 
 
 

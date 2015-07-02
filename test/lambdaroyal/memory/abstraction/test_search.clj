@@ -70,10 +70,23 @@
 
 (facts "checking hierarchie builder"
   (let [data [[1 {:size :big :color :red}] [2 {:size :big :color :green}]]]
-    (fact (hierarchie data identity :size :col) => '([[:big 2] ([[nil 2] [[1 {:color :red, :size :big}] [2 {:color :green, :size :big}]]])]))
-    (fact (hierarchie data identity :size #(:col %)) => '([[:big 2] ([[nil 2] [[1 {:color :red, :size :big}] [2 {:color :green, :size :big}]]])]))
-    (fact (hierarchie data identity :size (fn [d] (get d :color))) => '([[:big 2] ([[:red 1] [[1 {:color :red, :size :big}]]] [[:green 1] [[2 {:color :green, :size :big}]]])]))
-    (fact (hierarchie data #(count %) :size (fn [d] (get d :color))) => '([[:big 2] ([[:red 1] 1] [[:green 1] 1])]))))
+    (fact (hierarchie data identity #(-> % last :size) #(-> % last :col)) => '([[:big 2] ([[nil 2] [[1 {:color :red, :size :big}] [2 {:color :green, :size :big}]]])]))
+    (fact (hierarchie data identity #(-> % last :size) #(-> % last :col)) => '([[:big 2] ([[nil 2] [[1 {:color :red, :size :big}] [2 {:color :green, :size :big}]]])]))
+    (fact (hierarchie data identity #(-> % last :size) (fn [d] (get (last d) :color))) => '([[:big 2] ([[:red 1] [[1 {:color :red, :size :big}]]] [[:green 1] [[2 {:color :green, :size :big}]]])]))
+    (fact (hierarchie data #(count %) #(-> % last :size) (fn [d] (get (last d) :color))) => '([[:big 2] ([[:red 1] 1] [[:green 1] 1])]))))
+
+
+(defn shortpath [[x y]]
+  [#(-> % last x) #(-> % last y)])
+
+(facts "checking hierarchie builder with category characteristics"
+  (let [data [[1 {:size :big :shape :cube :color :red :alpha :light}] [2 {:size :big :shape :cube :color :green :alpha :dark}]]]
+    (fact "searching by site and shape - verbose option"
+      (hierarchie-ext data identity [#(-> % last :size) #(-> % last :shape)] [#(-> % last :color) #(-> % last :alpha)]) => '([[:big 2 :cube] ([[:red 1 :light] [[1 {:color :red, :size :big, :shape :cube, :alpha :light}]]] [[:green 1 :dark] [[2 {:color :green, :size :big, :shape :cube, :alpha :dark}]]])]))
+    (fact "searching by site and shape - less verbose option"
+      (apply hierarchie-ext data identity (map #(shortpath %) [[:size :shape] [:color :alpha]])) 
+      => '([[:big 2 :cube] ([[:red 1 :light] [[1 {:color :red, :size :big, :shape :cube, :alpha :light}]]] [[:green 1 :dark] [[2 {:color :green, :size :big, :shape :cube, :alpha :dark}]]])]))))
+
 
 
 
