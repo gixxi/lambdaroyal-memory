@@ -5,7 +5,7 @@ set decimalsign "."
 set timefmt "%Y-%m-%d %H:%M:%S"
 set xdata time
 set output "1000Orders.png"
-set yrange [0 : 20000]
+set yrange [0 : 25000]
 set format x "%Y-%m-%d %H:%M"
 set xtics rotate by -90
 set ylabel 'runtime (ms)'
