@@ -362,7 +362,11 @@
 (defn select
   "test(s) one of <, <=, > or
   >=. Returns a seq of those entries [key, value] with keys ek for
-  which (test (.. sc comparator (compare ek key)) 0) is true"
+  which (test (.. sc comparator (compare ek key)) 0) is true. iff just [tx] and coll-name are given, then we return all tupels."
+  ([tx coll-name]
+   {:pre [(contains? (-> tx :context deref) coll-name)]}
+   (let [all (-> (get  (-> tx :context deref) coll-name) :data deref)]
+     (map user-scope-tuple all)))
   ([tx coll-name start-test start-key]
    {:pre [(contains? (-> tx :context deref) coll-name)]}
    (let [sub (subseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test start-key)]
