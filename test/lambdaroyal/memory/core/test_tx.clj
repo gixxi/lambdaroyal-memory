@@ -114,6 +114,8 @@
        (-> (select-first tx :order 500) last) => {:orell :meisi :anne :iben})
      (fact "select all elements must reveal all elements"
        (count (select tx :order >= -10)) => 1000)
+     (fact "select all elements without constraining must reveal all elements"
+       (count (select tx :order)) => 1000)
      (fact "select all but the first elements ..."
        (count (select tx :order > 1)) => 999)
      (fact "select subset ..."
