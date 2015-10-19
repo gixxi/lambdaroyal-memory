@@ -14,7 +14,8 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
   (import [java.net ConnectException]))
 
 (defn- check-couchdb-connection [url]
-  (let [e (format "Cannot access Couch DB server on %s. Did you start it (probably by sudo /usr/local/etc/init.d/couchdb start" url)]
+  (let [_ (log/info (format "try to access couchdb server using url %s" url))
+        e (format "Cannot access Couch DB server on %s. Did you start it (probably by sudo /usr/local/etc/init.d/couchdb start" url)]
     (try
       (if-not 
           (= "Welcome" (:couchdb (clutch/couchdb-info url)))
