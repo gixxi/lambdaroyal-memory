@@ -6,7 +6,9 @@
   :dependencies [[org.clojure/clojure "1.7.0-alpha5"]
                  [org.clojure/core.typed "0.3.0-alpha2"]
                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]
-                 [com.ashafa/clutch "0.4.0"]
+                 [clj-http "2.0.0"]
+                 [com.ashafa/clutch "0.4.0"
+                  :exclusions [clj-http]]
                  [org.clojure/tools.logging "0.3.1"]
                  [org.slf4j/slf4j-log4j12 "1.7.1"]
                  [log4j "1.2.15" 
