@@ -133,3 +133,123 @@ Lets clean up a bit
 (dosync
   (delete tx :part-order 2))
 ```
+
+## Search Abstractions
+
+Refer to namespace
+
+> 
+
+Search abstractions help you to get projections of your data, performing may queries in parallel whose results are combined together and to handle real-world aspects like query timeout with little amount of codes.
+
+Search abstractions make heavy use of clojure.core/async that bring asynchronous programming using channels to the stake. This allows easy and efficent creation of thousands of parallel _activity streams_ without getting trapped by thousands of I/O consuming threads.
+
+### Search Abstractions for doing queries in parallel
+
+Just imagin' you could start 10 concurrent queries, handling timeout and combining those results that fetched-in before the timeout occured. If you think that's a real-world use case, then go on reading.
+
+First building block is the function
+
+> (defn abstract-search [λ] ...)
+
+This higher order function takes a function λ into account that produces a lazy sequence as a search result and returns a function λ' that in turn returns a channel where the result of function λ is pushed to.
+
+example would be a function that returns all tuples from a collection, we turns this into a channeled version
+
+```Clojure
+(defn search-coll [ctx coll-name & opts]
+  (abstract-search 
+   (fn []
+     (let [tx (create-tx ctx)]
+       (select tx coll-name)))))
+```
+
+Second building block is an _aggregator function_ that combines the result of the individual queries created using the above _abstract-search_. A aggregator function takes one argument [n], where n is a result from one of the individual queries.
+
+We have several standard aggregators in place
+
+The *concat-aggregator assumes a vector STM ref to exist where all the query results are concatenated to, bear in mind that the final result might contain the same tuple more than once. 
+
+> (defn concat-aggregator [ref data] ...)
+
+The *set-aggregator* combines results into a set, given by STM ref. This eliminates doubles from the result.
+
+> (defn set-aggregator [ref data] ...)
+
+Using a *sorted-set-by* eliminates doubles as well and combines the result into a sorted map given by STM ref. Sorting is done based on the comparator used to create the sorted set, so this is out of the equation here and due to the user of the function. But we offer a default implementation that is provided by the function
+
+> gen-sorted-set 
+
+*BUT* precondition for this to behave as expected is that a query returns *user scope tupels* where :coll is a key within the second value and its value denotes the collection this tuple belongs to. Valid example would be
+
+> [123 {:name "foo" :coll :great-foos}]
+
+Now we have all thing in place to perform combined searches using
+
+> (defn [combined-search fns agr query & opts] ...)
+
+where
+
+* *fns* is a sequence of query functions, each a result of applying *abstract-search*
+* *agr* the aggregator function
+* *query* a parameter passed to each query function fn of *fns*, this might be a vector or some other non-atomic data
+* opts options, see below
+
+The following options are accepted
+* *:timeout* value in ms after which the aggregator channel is closed, no more search results are considered.
+* *:minority-report* number of search function fn in [fns] that need to result in order to close the aggregator channel is closed and no more search results are considered.
+* *:finish-callback* a function with no params that gets called when the aggregator go block stops.
+
+Let's get our hands dirty and use this to start the action.
+
+Here we combine all the tuples from collections :a, :b and :c using the set-aggregator and
+print the number of elements after all queries returned.
+
+```Clojure
+(let [result (atom #{})]
+  (combined-search [(search-coll ctx :a)
+                    (search-coll ctx :b)
+                    (search-coll ctx :c)]
+                     (partial set-aggregator result) 
+                     nil 
+                     :finish-callback (fn [] (-> @result count println))))
+```
+
+Now the version that suffices with the result of two queries out of three
+
+```Clojure
+(let [result (atom #{})]
+  (combined-search [(search-coll ctx :a)
+                    (search-coll ctx :b)
+                    (search-coll ctx :c)]
+                     (partial set-aggregator result) 
+                     nil
+                     :minority-report 0 
+                     :finish-callback (fn [] (-> @result count println))))
+```
+
+A note about *performance* - the concat-aggregator, less convenient, is *considerably faster* than the set-aggregator. Aggregating 60000 elements (30000 unique elements) with the concat-aggregator on an ordinary vector STM takes two magnitudes less time than by using the set operator that has to calculated hashes on quite large documents.
+
+Refer to ns _lambdaroyal.memory.abstraction.test-search-abstraction_ for details
+
+```
+concat aggregation took (ms)  4
+set concat aggregation took (ms)  506
+```
+
+So if you know that queries do result in disjunct data and you can cope with the sorting provided by the queries itself, stick to the lightning fast _concat-aggregator_.
+
+And finally the version that suffices with two queries out three or a timeout of a second
+
+```Clojure
+(let [result (atom #{})]
+  (combined-search [(search-coll ctx :a)
+                    (search-coll ctx :b)
+                    (search-coll ctx :c)]
+                     (partial set-aggregator result) 
+                     nil
+                     :minority-report 0 
+                     :timeout 1000
+                     :finish-callback (fn [] (-> @result count println))))
+```
+
