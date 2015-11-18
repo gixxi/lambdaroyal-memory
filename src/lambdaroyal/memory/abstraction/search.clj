@@ -53,6 +53,62 @@
             ;;loop - wait for the next
             (recur (inc i) (nil? next))))))))
 
+(defn concat-aggregator 
+  "assumes ref to be a vector reference"
+  [ref data]
+  (dosync
+   (commute ref concat data)))
+
+(defn set-aggregator
+  "assumes that data to be aggregated in are collection tupels where the document (second element) contains a key :coll denoting the collection the tuple belongs to. yields a set of collection tuples. assumes the ref to be a set"
+  [ref data]
+  (dosync
+   (apply commute ref conj data)))
+
+(defn gen-sorted-set 
+  "generates a STM ref on a sorted set that can be used in conjunction with set-aggregator"
+  []
+  (ref (sorted-set-by
+        (fn [x x']
+          (let [coll (-> x last :coll)
+                coll' (-> x' last :coll)]
+            (if 
+                (= coll coll')
+              (compare (first x) (first x'))
+              (compare coll coll')))))))
+
+(defn sorted-set-aggregator
+  "assumes that data to be aggregated in are collection tupels where the document (second element) contains a key :coll denoting the collection the tuple belongs to and all the keys (first element) are comparable with each other yields a set of collection tuples. assumes that ref denotes a sorted-set-by. the keys of the map are (collection tuple-key)"
+  [ref data]
+  (doseq [x data]
+    (dosync
+     (commute ref assoc (list (-> data second :coll) (-> data first)) data))))
+
+(defn combined-search' 
+  "derives from lambdaroyal.memory.abstraction.search/combined-search - 
+  higher order function - takes a aggregator function [agr], a sequence of concrete functions (abstract-search), a query parameter [query] (can be a sequence) and optional parameters [opts] and returns go block. all the search functions [fns] are called with parameter [query] executed in parallel and feed their result (a sequence of user-scope tuples from lambdaroyal memory) to the aggregator function [agr]. By default the resulting go routine waits for all fn in [fns] for delivering a result.
+
+  The following options are accepted\n 
+  :timeout value in ms after which the aggregator channel is closed, no more search results are considered.\n
+  :minority-report number of search function fn in [fns] that need to result in order to close the aggregator channel is closed and no more search results are considered.\n
+  :finish-callback a function with no params that gets called when the aggregator go block stops."
+  [agr fns query & opts]
+  (apply combined-search fns agr query opts))
+
+
+(defn combined-search''
+  "SET SEARCH - derives from lambdaroyal.memory.abstraction.search/combined-search - 
+  higher order function - takes a sequence of concrete functions (abstract-search), a query parameter [query] (can be a sequence), a function [finish-callback]  and optional parameters [opts] and returns go block. all the search functions [fns] are called with parameter [query] executed in parallel and feed their result (a sequence of user-scope tuples from lambdaroyal memory) to the aggregator function sorted-set-aggregator. the finish-callback takes one paremeter, the dereferenced aggregator value, in layman terms, all the documents that were found by the aggregator. By default the resulting go routine waits for all fn in [fns] for delivering a result.
+
+  The following options are accepted\\n 
+  :timeout value in ms after which the aggregator channel is closed, no more search results are considered.\\n
+  :minority-report number of search function fn in [fns] that need to result in order to close the aggregator channel is closed and no more search results are consfidered."
+  [fns query finish-callback & opts] 
+  (let [acc (ref #{})
+        agr (partial set-aggregator acc)]
+    (apply combined-search' agr fns query :finish-callback #(finish-callback @acc) opts)))
+
+
 ;; --------------------------------------------------------------------
 ;; BUILDING A DATA HIERARCHIE
 ;; CR - https://github.com/gixxi/lambdaroyal-memory/issues/1
