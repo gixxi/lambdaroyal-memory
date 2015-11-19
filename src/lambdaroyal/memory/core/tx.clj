@@ -144,10 +144,8 @@
               unique-key (create-unique-key (.this this) user-key)]
           (if unique 
             (if-let [match (first (.find-without-stop this >= user-key))]
-              (do
-                (println :user-key user-key :match match)
-                (if (= user-key (attribute-values (-> match last deref) attributes))
-                  (throw (create-constraint-exception coll key (format "unique index constraint violated on index %s when precommit value %s" attributes value))))))))))
+              (if (= user-key (attribute-values (-> match last deref) attributes))
+                (throw (create-constraint-exception coll key (format "unique index constraint violated on index %s when precommit value %s" attributes value)))))))))
     (postcommit [this ctx coll application coll-tuple]
       (cond
        (= :insert application)
@@ -449,16 +447,3 @@
   [tx coll-name user-scope-tuple & opts]
   {:pre [(contains? (-> tx :context deref) coll-name)]}
   (replace-in-tree tx coll-name user-scope-tuple tree-referencees :cache {}))
-
-
-
-
-
-
-
-
-
-
-
-
-

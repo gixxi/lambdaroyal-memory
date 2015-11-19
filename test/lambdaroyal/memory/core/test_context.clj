@@ -75,10 +75,3 @@
       (map :name (dependency-model-ordered (-> (create-context meta-model-with-ric) deref vals))) => '(:type :order :part-order :line-item))
     (fact "reveal proper collection order using a model with just one collection"
       (map :name (dependency-model-ordered (-> (create-context {:sys_state {:indexes []}}) deref vals))) => '(:sys_state))))
-
-
-
-
-
-
-
