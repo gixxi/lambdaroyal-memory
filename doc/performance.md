@@ -35,7 +35,7 @@ Here hierachie denotes grouping the data into certain categories. For each value
 # How to update the performance indicators herein
 
 * run ```lein midje```
-* execute all stats*.gnuplot scripts in *test/stats* directory
+* execute all stats*.gnuplot scripts in *test/stats* directory OR run *make* in *test/stats*
 
 # Machine & runtime specs
 
