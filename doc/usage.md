@@ -218,7 +218,7 @@ print the number of elements after all queries returned.
 Now the version that suffices with the result of two queries out of three
 
 ```Clojure
-(let [result (atom #{})]
+(let [result (ref #{})]
   (combined-search [(search-coll ctx :a)
                     (search-coll ctx :b)
                     (search-coll ctx :c)]
@@ -242,7 +242,7 @@ So if you know that queries do result in disjunct data and you can cope with the
 And finally the version that suffices with two queries out three or a timeout of a second
 
 ```Clojure
-(let [result (atom #{})]
+(let [result (ref #{})]
   (combined-search [(search-coll ctx :a)
                     (search-coll ctx :b)
                     (search-coll ctx :c)]
@@ -253,3 +253,68 @@ And finally the version that suffices with two queries out three or a timeout of
                      :finish-callback (fn [] (-> @result count println))))
 ```
 
+### Search for getting projections on your data
+
+Lets assume you got the following metamodel, so your :partorder tupels refer both an :order tupel as well as a :type tupel, where as each :order tupel associates a :client tupel.
+
+![](https://raw.githubusercontent.com/gixxi/lambdaroyal-memory/master/design/current.datastructures/example2.metamodell.png)
+
+This relationship modell is implemented by the following metamodel
+
+```clojure
+(def meta-model
+  {:client {:indexes []} 
+   :type {:indexes []}
+   :order {:indexes []
+           :foreign-key-constraints [{:foreign-coll :client :foreign-key :type}]}
+   :part-order {:indexes [] 
+                :foreign-key-constraints [{:name :type :foreign-coll :type :foreign-key :type}
+                                          {:name :order :foreign-coll :order :foreign-key :order}]}})
+```
+
+Core of the projection is the higher order function _proj_
+
+> (defn proj [tx λ & path-fns] ...)
+
+which takes a higher order functions λ into account that that returns a function whose application results in a seq of user scope tupels AND metadata with :coll-name denoting the collection the tupels belong to. Furthermore this function takes a variable number of path functions [path-fns] into account. The first one is supposed to take the outcome of application of λ into account, all others are supposes to take the outcome of the respective predessor path-fn into account. All are supposed to produce a seq of user scope tupels that is consumable be the respective successor path-fn AND metadata denoting the collection name by key :coll-name.
+
+We take a shortcut here and give a full-fletched example with respect to our meta model that returns all :part-order tupel that refer to order which in turn refer to a :client tupel with key 2.
+
+```Clojure
+(proj tx
+      (filter-key tx :client 2)
+      (>>> :order)
+      (>>> :part-order))
+```
+
+*filter-key* is one of the grazy λs that return a function itself, which applied result in a set of user scope tupels with the meta data necessary for the combination with the path functions (here *>>>*).
+
+One could easily write a custom super-duper λ or one cound just stick to those we provide:
+
+> (defn filter-all [tx coll-name] ...)
+
+A higher order function that returns a function that returns a sequence of all tuples within the collection with name [coll-name].
+
+> (defn filter-key [tx coll-name key] ...)
+> (defn filter-key [tx coll-name start-test start-key] ...)
+> (defn filter-key [tx coll-name start-test start-key stop-test stop-key])
+
+Higher order functions that returns a function that returns a sequence of all tupels whose key is equal to [key], or matches the constraints provided, start-test and stop-test are just boolean functions.
+
+> (defn filter-index [tx coll-name attr start-test start-key])
+> (defn filter-index [tx coll-name attr start-test start-key stop-test stop-key])
+
+Higher order functions that return a function that returns a sequence of all tupels that are resolved using a index lookup using the attribute seq [attr] and the comparator [start-test] as well as the attribute value sequence [start-key]. The second version 'lambdas' the index search for a range additionally taking [stop-test] and [stop-key] into account.
+
+In addition to the filter function we need functions that join the associated collection. So we can climb the collection tree up to the desired collection we are actually interested in. Furthermore these function can optionally take a filter function into account that decides what associated collection tuples are to be considered.
+
+We provide two default implementations, the first takes an additional filter into account, the later one does not restrict the result.
+
+> (defn >> [target filter-fn & opts] ...)
+> (defn >>> [target & opts] ...)
+
+Here _opts_ can contain
+
+* *:ratio-full-scan* iff greater or equal to the ratio (count keys / number of tuples in target of [0..1]) then the source collection is fully scanned for matching tuples rather than queried by index lookups. If not given, 0.4 is the default barrier.
+* *:parallel* iff true (default) then all the index lookups as per individual input user tupels are performed concurrently
+  

@@ -1,6 +1,8 @@
 (ns lambdaroyal.memory.abstraction.search
   (:require [clojure.core.typed :as t]
-            [clojure.core.async :refer [>! <! alts! timeout chan go]]))
+            [clojure.core.async :refer [>! <! alts! timeout chan go]]
+            [lambdaroyal.memory.core.tx :as tx])
+  (import [lambdaroyal.memory.core.tx Index ReferrerIntegrityConstraint]))
 
 ;; --------------------------------------------------------------------
 ;; TYPE ABSTRACTIONS
@@ -157,16 +159,118 @@
         ;;else
         xs)))
 
+(defn ric
+  "returns the first identified ReferrerIntegrityConstraint from a collection [source] that refers to a collection [target]"
+  [tx source target]
+  {:pre [(contains? (-> tx :context deref) source)
+         (contains? (-> tx :context deref) target)]}
+  (let [
+        ctx (-> tx :context deref)
+        source-coll (get ctx source)
+        target-coll (get ctx target)
+        constraints (map last (-> source-coll :constraints deref))
+        rics (filter
+              #(instance? ReferrerIntegrityConstraint %) constraints)] 
+    (some #(if (= (.foreign-coll %) target) %) rics)))
 
+(defn by-ric
+  "returns all user scope tuples from collection [source] that refer to collection [target] by some ReferrerIntegrityConstraint and have foreign-key of the sequence [keys]. the sequence is supposed to be redundancy free (set). opts might contain :ratio-full-scan iff greater or equal to the ratio (count keys / number of tuples in target of [0..1]) then the source collection is fully scanned for matching tuples rather than queried by index lookups. If not given, 0.4 is the default barrier."
+  [tx source target keys & opts]
+  (with-meta 
+    (let [opts (if opts (apply hash-map opts))
+          {verbose :verbose parallel :parallel, ratio-full-scan :ratio-full-scan, :or {parallel true ratio-full-scan 0.4 verbose false}} opts
+          ric (or (ric tx source target) (throw (IllegalStateException. (str "Failed to build data projection - no ReferrerIntegrityConstraint from collection " source " to collection " target " defined."))))
+          keys-to-collsize-ratio (/ (count keys) (-> tx :context deref target :data deref count))
+          full-scan (> keys-to-collsize-ratio ratio-full-scan)
+          _ (if (and verbose full-scan) (println :full-scan source target keys-to-collsize-ratio))
+          ctx (-> tx :context deref)
+          source-coll (get ctx source)]
+      (if full-scan
+        ;;in full-scan mode we just build a set of the keys provided and filter
+        (let [keys (into #{} keys)
+              xs (tx/select tx source)]
+          (filter #(contains? keys (get (last %) (.foreign-key ric))) xs))
+        (let [find-fn (fn [key]
+                        (take-while  
+                         #(= key (get (last %) (.foreign-key ric)))
+                         (map tx/user-scope-tuple
+                              (tx/select-from-coll 
+                               source-coll 
+                               [(.foreign-key ric)]
+                               >= 
+                               [key]))))
+              ;;one seq with the results for each key
+              xs ((if parallel pmap map) find-fn keys)]
+          (reduce 
+           (fn [acc x]
+             (concat acc x)) [] xs))))
+    {:coll-name target}))
 
+(defn >>
+  "Pipe, Convenience Function. A higher order function that returns a function taking a transaction [tx] and a set of user scope tupels into account that MUST aggregate as meta data key :coll-name the collection the tupels belong to, the lambda returns itself a by-ric from source collection as per the input xs to target location. The filter is applied to the xs."
+  [target filter-fn & opts]
+  (fn [tx xs]
+    {:pre [(-> xs meta :coll-name)]}
+    (with-meta (filter filter-fn
+                       (apply by-ric tx target (-> xs meta :coll-name) (map first xs) opts))
+      {:coll-name target})))
 
+(defn >>>
+  "Pipe, Convenience Function. A higher order function that returns a function taking a transaction [tx] and a set of user scope tupels into account that MUST aggregate as meta data key :coll-name the collection the tupels belong to, the lambda returns itself a by-ric from source collection as per the input xs to target location."
+  [target & opts]
+  (apply >> target (fn [x] true) opts))
 
+(defn filter-all
+  "higher order function that returns a function that returns a sequence of all tuples within the collection with name [coll-name]"
+  [tx coll-name]
+  (let [meta {:coll-name coll-name}]
+    (with-meta (fn []
+                 (with-meta 
+                   (tx/select tx coll-name) meta)) meta)))
 
+(defn filter-key
+  "higher order function that returns a function that returns a sequence of all tupels whose key is equal to [key]"
+  ([tx coll-name key]
+   (let [meta {:coll-name coll-name}]
+     (with-meta (fn [& opts]
+                  (with-meta
+                    (take-while  
+                     #(= key (first %))
+                     (tx/select tx coll-name >= key))
+                    meta)) meta)))
+  ([tx coll-name start-test start-key]
+   (let [meta {:coll-name coll-name}]
+     (with-meta (fn [& opts]
+                  (with-meta (tx/select tx coll-name start-test start-key) meta)) meta)))
+  ([tx coll-name start-test start-key stop-test stop-key]
+   (let [meta {:coll-name coll-name}]
+     (with-meta (fn [& opts]
+                  (with-meta (tx/select tx coll-name start-test start-key stop-test stop-key))
+                  meta) meta))))
 
+(defn filter-index
+  "higher order function that returns a function that returns a sequence of all tupels that are resolved using a index lookup using the attribute seq [attr] and the comparator [start-test] as well as the attribute value sequence [start-key]. The second version 'lambdas' the index search for a range additionally taking [stop-test] and [stop-key] into account"
+  ([tx coll-name attr start-test start-key]
+   (let [meta {:coll-name coll-name}]
+     (with-meta (fn [& opts]
+                  (with-meta (tx/select tx coll-name attr start-test start-key)
+                    meta))
+       meta)))
+  ([tx coll-name attr start-test start-key stop-test stop-key]
+   (let [meta {:coll-name coll-name}]
+     (with-meta 
+       (fn [& opts]
+         (with-meta (tx/select tx coll-name attr start-test start-key stop-test stop-key) meta))
+       meta))))
 
-
-
-
-
-
-
+(defn proj 
+  "data projection - takes a higher order functions λ into account that that returns a function whose application results in a seq of user scope tupels AND metadata with :coll-name denoting the collection the tupels belong to. Furthermore this function takes a variable number of path functions [path-fns] into account. The first one is supposed to take the outcome of application of λ into account, all others are supposes to take the outcome of the respective predessor path-fn into account. All are supposed to produce a seq of user scope tupels into account that is consumable be the respective successor path-fn AND metadata denoting the collection name by key :coll-name."
+  [tx λ & path-fns]
+  ;;this fuss means we copy the meta data from the function to the result of its application
+  (let [xs (with-meta (λ) (meta λ))]
+    (if-not path-fns 
+      xs
+      (loop [xs xs path-fns path-fns]
+        (if 
+          (empty? path-fns) xs
+          (recur ((first path-fns) tx xs) (rest path-fns)))))))
