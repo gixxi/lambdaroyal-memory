@@ -138,9 +138,9 @@ Lets clean up a bit
 
 Refer to namespace
 
-> 
+> lambdaroyal.memory.abstraction.search
 
-Search abstractions help you to get projections of your data, performing may queries in parallel whose results are combined together and to handle real-world aspects like query timeout with little amount of codes.
+Search abstractions help you to get projections of your data, performing many queries in parallel whose results are combined together and to handle real-world aspects like query timeout with little amount of codes.
 
 Search abstractions make heavy use of clojure.core/async that bring asynchronous programming using channels to the stake. This allows easy and efficent creation of thousands of parallel _activity streams_ without getting trapped by thousands of I/O consuming threads.
 

@@ -7,7 +7,6 @@
            [clojure.test :refer :all])
   (import [lambdaroyal.memory.core ConstraintException]))
 
-
 (def meta-model
   {:a
    {:unique true :indexes []}
@@ -70,35 +69,37 @@
 
 (facts "checking hierarchie builder"
   (let [data [[1 {:size :big :color :red}] [2 {:size :big :color :green}]]]
-    (fact (hierarchie data identity #(-> % last :size) #(-> % last :col)) => '([[:big 2] ([[nil 2] [[1 {:color :red, :size :big}] [2 {:color :green, :size :big}]]])]))
-    (fact (hierarchie data identity #(-> % last :size) #(-> % last :col)) => '([[:big 2] ([[nil 2] [[1 {:color :red, :size :big}] [2 {:color :green, :size :big}]]])]))
-    (fact (hierarchie data identity #(-> % last :size) (fn [d] (get (last d) :color))) => '([[:big 2] ([[:red 1] [[1 {:color :red, :size :big}]]] [[:green 1] [[2 {:color :green, :size :big}]]])]))
-    (fact (hierarchie data #(count %) #(-> % last :size) (fn [d] (get (last d) :color))) => '([[:big 2] ([[:red 1] 1] [[:green 1] 1])]))))
+    (fact (hierarchie data identity #(-> % last :size) #(-> % last :col)) =>
+          [[:big 2] [[1 {:color :red, :size :big}] [2 {:color :green, :size :big}]]])
+    (fact (hierarchie data identity #(-> % last :size) #(-> % last :color)) => 
+          [[:big 2] '([[:red 1] [[1 {:color :red, :size :big}]]] [[:green 1] [[2 {:color :green, :size :big}]]])])
+    (fact (hierarchie data identity #(-> % last :size) (fn [d] (get (last d) :color))) => [[:big 2] '([[:red 1] [[1 {:color :red, :size :big}]]] [[:green 1] [[2 {:color :green, :size :big}]]])])
+    (fact (hierarchie data #(count %) #(-> % last :size) (fn [d] (get (last d) :color))) => [[:big 2] '([[:red 1] 1] [[:green 1] 1])])))
 
 
 (defn shortpath [[x y]]
   [#(-> % last x) #(-> % last y)])
+(defn shortpath2 [x]
+  #(-> % last x))
 
 (facts "checking hierarchie builder with category characteristics"
+  (let [data [[1 {:size :big :color :red}] [2 {:size :big :color :green}]
+              [3 {:size :small}]]
+        res (hierarchie data identity #(-> % last :size) #(-> % last :color))
+        _ (println :res res)]
+    (fact "build hierarchies with partial information" res => '([[:big 2] ([[:red 1] [[1 {:color :red, :size :big}]]] [[:green 1] [[2 {:color :green, :size :big}]]])] [[:small 1] [[3 {:size :small}]]])))
+  (let [data '(
+               [1 {:_id 1  :unique-key 1 :bereich "WE"  :count-stock 5}] 
+               [2 {:_id 2 :gang "gang" :feld "feld" 1  :ebene "ebene" 2 :unique-key 2 :bereich "kühl"  :count-stock 1 :seite "links"}] 
+               [3 {:_id 3 :gang "gang" 1 :feld "feld 1"  :ebene "ebene" 3 :unique-key 3 :bereich "kühl"  :count-stock 0 :seite links}] [4 {:_id 4 :gang "gang 1" :feld "feld 2" :ebene "ebene 1" :unique-key 4, :bereich "kühl"  :count-stock 1 :seite "links"}])
+        res (apply hierarchie data
+                   #(apply + (map (fn [x] (-> x last :count-stock)) %))
+                   (map #(shortpath2 %) [:bereich :gang]))
+        _ (println :res res)]
+    (fact "build hierarchies with partial information and leaf handler" res => '([["WE" 1] 5] [["kühl" 3] ([["gang" 2] 1] [["gang 1" 1] 1])])))
   (let [data [[1 {:size :big :shape :cube :color :red :alpha :light}] [2 {:size :big :shape :cube :color :green :alpha :dark}]]]
     (fact "searching by site and shape - verbose option"
       (hierarchie-ext data identity [#(-> % last :size) #(-> % last :shape)] [#(-> % last :color) #(-> % last :alpha)]) => '([[:big 2 :cube] ([[:red 1 :light] [[1 {:color :red, :size :big, :shape :cube, :alpha :light}]]] [[:green 1 :dark] [[2 {:color :green, :size :big, :shape :cube, :alpha :dark}]]])]))
     (fact "searching by site and shape - less verbose option"
       (apply hierarchie-ext data identity (map #(shortpath %) [[:size :shape] [:color :alpha]])) 
       => '([[:big 2 :cube] ([[:red 1 :light] [[1 {:color :red, :size :big, :shape :cube, :alpha :light}]]] [[:green 1 :dark] [[2 {:color :green, :size :big, :shape :cube, :alpha :dark}]]])]))))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
