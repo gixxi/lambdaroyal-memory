@@ -121,7 +121,7 @@
 ;; --------------------------------------------------------------------
 
 ;;(t/ann hierarchie [t/Any t/Kw * -> t/Any])
-(defn hierarchie 
+(defn hierarchie
   "[level] is variable arity set of keywords or function taking a document into account and providing back a category. [handler] is a function applied to the leafs of the hierarchie. Using identity as function will result the documents as leafs."
   [xs handler & levels]
   (if levels
@@ -130,9 +130,17 @@
           xs' (group-by #(level %) xs)
           xs'' (pmap 
                 (fn [[k v]]
-                  [[k (count v)]
-                   (apply hierarchie v handler next)])
-                xs')]
+                  ;;consider partial hierarchies, where a level is not present
+                  (if k 
+                    [[k (count v)]
+                     (apply hierarchie v handler next)]
+                    ;;else
+                    (apply hierarchie v handler next)))
+                xs')
+          ;;special handling for partial hierarchies, if their is just one result in the bucket we
+          ;;use this rather than the bucket 
+          xs'' (if (and (= (count xs'') 1) rest)
+                 (first xs'') xs'') ]
       xs'')
     ;;else
     (if handler (handler xs) 
@@ -150,8 +158,11 @@
             xs' (group-by #(level-category %) xs)
             xs'' (pmap 
                   (fn [[k v]]
-                    [[k (count v) (if level-ext (level-ext (first v)) nil)]
-                     (apply hierarchie-ext v handler next)])
+                    ;;consider partial hierarchies, where a level is not present
+                    (if k
+                      [[k (count v) (if level-ext (level-ext (first v)) nil)]
+                       (apply hierarchie-ext v handler next)]
+                      (apply hierarchie-ext v handler next)))
                   xs')]
         xs''))
     ;;else
@@ -272,5 +283,5 @@
       xs
       (loop [xs xs path-fns path-fns]
         (if 
-          (empty? path-fns) xs
-          (recur ((first path-fns) tx xs) (rest path-fns)))))))
+            (empty? path-fns) xs
+            (recur ((first path-fns) tx xs) (rest path-fns)))))))

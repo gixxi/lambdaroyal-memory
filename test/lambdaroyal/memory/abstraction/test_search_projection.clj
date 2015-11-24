@@ -10,8 +10,16 @@
             [clojure.core.async :refer [>! alts!! timeout chan go]])
   (:import [java.text SimpleDateFormat]))
 
-;;we try to be idempotent, so we don't use mutable models from other workspaces here
+(defn append-to-timeseries [name & values]
+  (if (not= "false" (System/getenv "lambdaroyal.memory.traceteststats.disable"))
+    (let [dir (or (System/getenv "lambdaroyal.memory.traceteststats.dir") "test/stats/")
+          filename (str dir name ".dat")
+          format (SimpleDateFormat. "yyyy-MM-dd HH:mm:ss")]
+      (with-open [w (clojure.java.io/writer filename :append true)]
+        (.write w (apply str (.format format (new java.util.Date)) \; values))
+        (.write w "\n")))))
 
+;;we try to be idempotent, so we don't use mutable models from other workspaces here
 (def ^:const threads 10)
 
 (def meta-model
@@ -81,6 +89,17 @@
                            (>>> :part-order)))]
       (fact "type->order->partorder using the pipe" (count proj) => (roughly 100 500))
       (fact "client->order using the pipe for one key" (remove #(if (= % 2) %) (map #(-> % last :client) proj)) => empty))
+
+    ;;some speed test
+    (let [[t _] (timed (apply + (map count 
+                                  (pmap 
+                                   #(proj tx
+                                          (filter-key tx :client %)
+                                          (>>> :order)
+                                          (>>> :part-order)) 
+                                   (-> clients count range)))))]
+      (append-to-timeseries "projection" (apply str (interpose ";" [t (float (/ (-> ctx deref :part-order :data deref count) 100))])))
+      (fact "(parallel) 3x type->order->partorder using the pipe" t => (roughly 30 80)))
 
 
     (let [proj (by-ric tx :order :client [0 2])]

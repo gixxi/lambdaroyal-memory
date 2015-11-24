@@ -32,6 +32,19 @@ Here hierachie denotes grouping the data into certain categories. For each value
 
 ![](https://raw.githubusercontent.com/gixxi/lambdaroyal-memory/master/test/stats/1000Orders.png)
 
+# Projecting Data
+
+Joining from collection A to B to C, where we consider only a certain a of A, C contains aprox. 1500 tupels. 3 Threads do this concurrently.
+
+## What is projecting data
+
+Projecting data is like querying relations using joins in relational database, using projections one can search for certain data that is associated using referential integrity constraints.
+
+## Performance
+
+![](https://raw.githubusercontent.com/gixxi/lambdaroyal-memory/master/test/stats/projection.png)
+
+
 # How to update the performance indicators herein
 
 * run ```lein midje```
