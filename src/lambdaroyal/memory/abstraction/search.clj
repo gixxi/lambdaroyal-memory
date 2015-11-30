@@ -139,13 +139,57 @@
                 xs')
           ;;special handling for partial hierarchies, if their is just one result in the bucket we
           ;;use this rather than the bucket 
-          xs'' (if (and (= (count xs'') 1) rest)
+          xs'' (if (and (= (count xs'') 1) next)
                  (first xs'') xs'') ]
       xs'')
     ;;else
     (if handler (handler xs) 
         ;;else
         xs)))
+
+(defn hierarchie-backtracking-int
+  [initial xs handler λbacktracking & levels]
+  (let [res (if levels
+              (let [level (first levels)
+                    next (rest levels)
+                    xs' (group-by #(level %) xs)
+                    xs'' (map 
+                          (fn [[k v]]
+                            ;;atomic denotes whether a seq with just one element was present -> only the single element is returned
+                            (let [res-from-recursion (apply hierarchie-backtracking-int false v handler λbacktracking next)]
+                              ;;consider partial hierarchies, where a level is not present
+                              (if k
+                                (let [;;denotes whether the data came from leaf
+                                      leaf (if (and (meta res-from-recursion) (-> res-from-recursion meta :leaf true?) (instance? clojure.lang.IPending res-from-recursion))
+                                             true false)
+                                      res-from-recursion (if leaf
+                                                           @res-from-recursion
+                                                           res-from-recursion)]
+                                  [(λbacktracking leaf [k (count v)] res-from-recursion) res-from-recursion])
+                                ;;else
+                                res-from-recursion)))
+                          xs')
+                    ;;special handling for partial hierarchies, if their is just one result in the bucket we
+                    ;;use this rather than the bucket 
+                    xs'' (if (= (count xs'') 1) (first xs'') xs'')]
+                xs'')
+              ;;else
+              ;;what the hack, we need to know whether we got data from the final recursion
+              ;;furthermore this data might be provided back without using grouping it due to
+              ;;partial hierarchies, types would be nice
+              (deliver (with-meta (promise) {:leaf true})
+                       (if handler (handler xs) 
+                           ;;else
+                           xs)))]
+    (if (and initial (meta res) (-> res meta :leaf) (instance? clojure.lang.IPending res))
+      @res
+      res)))
+
+(defn hierarchie-backtracking
+  "[level] is variable arity set of keywords or function taking a document into account and providing back a category. [handler] is a function applied to the leafs of the hierarchie. Using identity as function will result the documents as leafs. 
+  λbacktracking-fn must accept boolean flag that denotes whether we inspect leafs, the group key k, and a sequence of elements that result from applying a level discriminator to xs. k is [level-val count], where level-val denotes the result of applying the level discrimator function, count the number of elements WITHIN the next recursion matching the category. The function must return a adapted version of k that reflects the information necessary to the user."
+  [xs handler λbacktracking & levels]
+  (apply hierarchie-backtracking-int true xs handler λbacktracking levels))
 
 (defn hierarchie-ext 
   "builds up a hierarchie where a node is given by it's key (level discriminator), a map containing extra info that are characteristic for (an arbitrary) document that fits into this hierarchie as well as all the matching documents classified by the values of the next category (if any) or the matching documents as subnodes.

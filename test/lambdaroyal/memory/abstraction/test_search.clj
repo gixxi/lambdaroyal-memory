@@ -5,7 +5,7 @@
            [lambdaroyal.memory.helper :refer :all]
            [lambdaroyal.memory.abstraction.search :refer :all]
            [clojure.test :refer :all])
-  (import [lambdaroyal.memory.core ConstraintException]))
+  (import  [lambdaroyal.memory.core ConstraintException]))
 
 (def meta-model
   {:a
@@ -67,6 +67,13 @@
                          :finish-callback (fn [] (deliver result-promise @result)))
         (count @result-promise)) => 10000)))
 
+(facts "checking hierarchie builder for distinction in first group"
+  (fact (hierarchie [[1 {:size :big :color :red}] [2 {:size :small :color :green}]] identity #(-> % last :size)) =>
+        '([[:big 1] [[1 {:color :red, :size :big}]]] [[:small 1] [[2 {:color :green, :size :small}]]])))
+
+(facts "checking hierarchie builder for distinction in first group and aggregator handler"
+  (fact (hierarchie [[1 {:size :big :color :red}] [2 {:size :small :color :green}] [3 {:size :small :color :green}]] #(count %) #(-> % last :size)) => '([[:big 1] 1] [[:small 2] 2])))
+
 (facts "checking hierarchie builder"
   (let [data [[1 {:size :big :color :red}] [2 {:size :big :color :green}]]]
     (fact (hierarchie data identity #(-> % last :size) #(-> % last :col)) =>
@@ -76,6 +83,28 @@
     (fact (hierarchie data identity #(-> % last :size) (fn [d] (get (last d) :color))) => [[:big 2] '([[:red 1] [[1 {:color :red, :size :big}]]] [[:green 1] [[2 {:color :green, :size :big}]]])])
     (fact (hierarchie data #(count %) #(-> % last :size) (fn [d] (get (last d) :color))) => [[:big 2] '([[:red 1] 1] [[:green 1] 1])])))
 
+
+(facts "checking hierarchie builder with backtracking"
+  (let [data [{:size :big :color :red :length 1} {:size :big :color :green :length 2}{:size :big :color :green :length 3} {:size :huge :length 100}]]
+    (fact (hierarchie-backtracking data identity
+                                   (fn [leaf k xs]
+                                     (if leaf 
+                                       (conj k (apply + (map :length xs)))
+                                       (conj k (apply + (map #(-> % first last) xs))))
+                                     ) 
+                                   :size :color) =>
+                                   '([[:big 3 6] ([[:red 1 1] [{:color :red, :length 1, :size :big}]] [[:green 2 5] [{:color :green, :length 2, :size :big} {:color :green, :length 3, :size :big}]])] [[:huge 1 100] [{:length 100, :size :huge}]]))))
+
+(facts "checking hierarchie builder with backtracking with partial hierarchie"
+  (let [data [{:size :big :color :red :length 1} {:size :big :color :green :length 2}{:size :big :color :green :length 3} {:color :blue :length 100}]]
+    (fact (time (hierarchie-backtracking data identity
+                                         (fn [leaf k xs]
+                                           (if leaf 
+                                             (conj k (apply + (map :length xs)))
+                                             (conj k (apply + (map #(-> % first last) xs))))
+                                           ) 
+                                         :size :color)) =>
+                                   '([[:big 3 6] ([[:red 1 1] [{:color :red, :length 1, :size :big}]] [[:green 2 5] [{:color :green, :length 2, :size :big} {:color :green, :length 3, :size :big}]])] [[:blue 1 100] [{:color :blue, :length 100}]]))))
 
 (defn shortpath [[x y]]
   [#(-> % last x) #(-> % last y)])
