@@ -318,3 +318,65 @@ Here _opts_ can contain
 * *:ratio-full-scan* iff greater or equal to the ratio (count keys / number of tuples in target of [0..1]) then the source collection is fully scanned for matching tuples rather than queried by index lookups. If not given, 0.4 is the default barrier.
 * *:parallel* iff true (default) then all the index lookups as per individual input user tupels are performed concurrently
   
+# Getting Data Hierarchies
+
+## Background
+
+Building hierarchies groups data recursivly as per a set of discriminator functions. The leaves of the hierarchie tree are mapped using a mapper-fn.
+
+## Namespace
+
+> lambdaroyal.memory.abstraction.search
+
+functions
+
+> (defn hierarchie
+  "[level] is variable arity set of keywords or function taking a document into account and providing back a category. [handler] is a function applied to the leafs of the hierarchie. Using identity as function will result the documents as leafs."
+  [xs handler & levels] ...)
+
+> (defn hierarchie-ext 
+  "builds up a hierarchie where a node is given by it's key (level discriminator), a map containing extra info that are characteristic for (an arbitrary) document that fits into this hierarchie as well as all the matching documents classified by the values of the next category (if any) or the matching documents as subnodes.
+  [level] is variable arity set of taking a document into account and providing back a tuple [category ext], where category is a keyword or function providing back the category of a document whereas ext is a keyword or function providing back the the characteristics of a document with respect to the category. [handler] is a function applied to the leafs of the hierarchie. Using identity as function will result the documents as leafs."
+  [xs handler & levels] ...)
+
+The later one does consume for each group a function ext that is applied to the first element of the group in order to give back a categorie that is conj to the group key [level-val count category], where level-val denotes the result of applying the level discrimator function, count the number of elements WITHIN the next recursion matching the category and category the result of applying the category function *ext* to the first element matching the group.
+
+# Example
+Consider the following input data
+
+> (def xs [{:color :red :shape :teardrop :count 1} {:color :red :shape :cube :count 2} {:color blue :count 10}]
+
+can used to create a hierachie by
+
+> (hierarchie xs :count [:color :shape])  
+
+and results to
+
+> ([[:red 2][[[:teardrop 1]1] [[:cube][1]]][[:blue 1]10]])
+
+## Backtracking Providing aggregated data bottom-up
+
+> (hierarchie-backtracking xs handler backtracking-fn & levels)
+
+where *backtracking-fn* must accept boolean [leaf] denoting whether we operating on the outcome of leaf processing, the group key *k*, and a sequence of elements that result from applying a level discriminator to xs. _k_ is [level-val count], where level-val denotes the result of applying the level discrimator function, count the number of elements WITHIN the next recursion matching the category. The function must return a adapted version of _k_ that reflects the information necessary to the user.
+
+### Example of the application
+
+```Clojure
+(let [data [{:size :big :color :red :length 1} {:size :big :color :green :length 2}{:size :big :color :green :length 3} {:size :huge :length 100}]]
+    (hierarchie-backtracking data identity
+                                   (fn [leaf k xs]
+                                     (do
+                                       ;;(println :leaf leaf :k k :xs xs)
+                                       (if leaf 
+                                         (conj k (apply + (map :length xs)))
+                                         (conj k (apply + (map #(-> % first last)))))
+                                       )) 
+                                   :size :color))
+```
+
+results in 
+
+```Clojure
+'([[:big 3 6] ([[:red 1 1] [{:color :red, :length 1, :size :big}]] [[:green 2 5] [{:color :green, :length 2, :size :big} {:color :green, :length 3, :size :big}]])] [[:huge 1 100] [{:length 100, :size :huge}]])))
+```
