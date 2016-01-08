@@ -104,7 +104,7 @@
 
     (let [proj (by-ric tx :order :client [0 2])]
       (fact "client->order for one key" (count proj) => 200)
-      (fact "client->order for one key" (distinct (map #(-> % last :client) proj)) => [2 0]))
+      (fact "client->order for one key" (distinct (map #(-> % last :client) proj)) => (just [2 0] :in-any-order)))
     (let [proj (timed (by-ric tx :order :client [0 1 2] :parallel false :ratio-full-scan 1.1))
           proj' (timed (by-ric tx :order :client [0 1 2] :parallel true :ratio-full-scan 1.1))
           _ (println "parallel vs seriell " (first proj) (first proj'))]

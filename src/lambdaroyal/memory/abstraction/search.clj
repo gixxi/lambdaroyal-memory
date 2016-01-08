@@ -1,14 +1,11 @@
 (ns lambdaroyal.memory.abstraction.search
-  (:require [clojure.core.typed :as t]
-            [clojure.core.async :refer [>! <! alts! timeout chan go]]
+  (:require [clojure.core.async :refer [>! <! alts! timeout chan go]]
             [lambdaroyal.memory.core.tx :as tx])
   (import [lambdaroyal.memory.core.tx Index ReferrerIntegrityConstraint]))
 
 ;; --------------------------------------------------------------------
 ;; TYPE ABSTRACTIONS
 ;; --------------------------------------------------------------------
-
-(t/defalias TMap (t/Map t/Any t/Any))
 
 (defn abstract-search 
   "higher order function - takes a function [fn] that returns a lazy sequence [s] of user-scope tuples from lambdaroyal memory. This function returns a function that returns a channel where the result of the function fn, s is pushed to"
@@ -120,7 +117,6 @@
 ;; a function to the document
 ;; --------------------------------------------------------------------
 
-;;(t/ann hierarchie [t/Any t/Kw * -> t/Any])
 (defn hierarchie
   "[level] is variable arity set of keywords or function taking a document into account and providing back a category. [handler] is a function applied to the leafs of the hierarchie. Using identity as function will result the documents as leafs."
   [xs handler & levels]
@@ -219,8 +215,7 @@
   [tx source target]
   {:pre [(contains? (-> tx :context deref) source)
          (contains? (-> tx :context deref) target)]}
-  (let [
-        ctx (-> tx :context deref)
+  (let [ctx (-> tx :context deref)
         source-coll (get ctx source)
         target-coll (get ctx target)
         constraints (map last (-> source-coll :constraints deref))

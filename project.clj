@@ -3,9 +3,8 @@
   :url "https://github.com/gixxi/lambdaroyal-memory"
   :license {:name "GPL v3"
             :url "http://www.gnu.org/copyleft/gpl.html"}
-  :dependencies [[org.clojure/clojure "1.7.0-alpha5"]
-                 [org.clojure/core.typed "0.3.0-alpha2"]
-                 [org.clojure/core.async "0.1.346.0-17112a-alpha"]
+  :dependencies [[org.clojure/clojure "1.8.0-RC4"]
+                 [org.clojure/core.async "0.2.374"]
                  [clj-http "2.0.0"]
                  [com.ashafa/clutch "0.4.0"
                   :exclusions [clj-http]]

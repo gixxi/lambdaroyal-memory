@@ -37,8 +37,8 @@
   (facts "test performance of sorted-map datastructure with 10000 items"
     (fact "warmup time" (-> res :warm-up first) => (roughly 0 50 ))
     (fact "max time" (-> res :max first) => (roughly 0 0.1 ))
-    (fact "find time sequential" (-> res :find first) => (roughly 0 20))
-    (fact "find time parallel" (-> res :find-parallel first) => (roughly 0 20))
+    (fact "find time sequential" (-> res :find first) => (roughly 0 25))
+    (fact "find time parallel" (-> res :find-parallel first) => (roughly 0 25))
     (fact "find time range - find 1000 times a range using the index" (-> res :find-range first) => (roughly 0 500))
 ))
 
@@ -47,7 +47,7 @@
   (facts "test performance of sorted-map datastructure with 200000 items"
     (fact "warmup time" (-> res :warm-up first) => (roughly 0 1500))
     (fact "max time" (-> res :max first) => (roughly 0 0.1 ))
-    (fact "find time sequential" (-> res :find first) => (roughly 0 20))
+    (fact "find time sequential" (-> res :find first) => (roughly 0 25))
     (fact "find time parallel - find 1000 times a range using the index" (-> res :find-parallel first) => (roughly 0 500))))
 
 
