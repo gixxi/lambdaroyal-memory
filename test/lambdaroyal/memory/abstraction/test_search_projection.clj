@@ -123,6 +123,36 @@
     (fact "check filter-index for projection with range"
       (count ((filter-index tx :order [:name] >= [":asia"] <= [":europe"]))) => (count (select tx :order [:name] >= [":asia"] <= [":europe"])))))
 
+(facts "test projection on empty target"
+  (let [types '(:post :express :pick-up :store)
+        clients '(:europe :africa :asia)
+        targets (range 10)
+        deliverers '(:fedex :dhl :post)
+        articles '(:banana :apple :peach :plum)
+        batches '(:old :new :smelling)
+        poid (atom 0)
+        oid (atom 0)
+        liid (atom 0)
+        ctx (create-context meta-model)
+        tx (create-tx ctx)]
+    (let [proj (by-ric tx :order :client [0])]
+      (fact "client->order for one key" (count proj) => 0))
+    
+    ;; TESTING WRAPPING UP ALL THE SEARCH LAMBDAS (filter-xxx by the pipe function that does the by-ric
+    ;; HELL OF A WORK
+    (let [proj ((>> :order (fn [x] true)) tx ((filter-key tx :client 1)))]
+      (fact "client->order using the pipe for one key" (count proj) => 0))
+    
+    (let [proj ((>>> :part-order) tx ((filter-index tx :order [:name] >= [":europe"])))]
+      (fact "order->partorder using the pipe for key [:europe]" (count proj) => 0))
+    ;;now the more handsome version
+    (let [_ (println :proj)
+          proj (time (proj tx
+                           (filter-key tx :client 2)
+                           (>>> :order)
+                           (>>> :part-order)))]
+      (fact "type->order->partorder using the pipe" (count proj) => 0))))
+
 
 
 
