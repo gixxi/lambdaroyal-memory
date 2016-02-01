@@ -230,30 +230,34 @@
     (let [opts (if opts (apply hash-map opts))
           {verbose :verbose parallel :parallel, ratio-full-scan :ratio-full-scan, :or {parallel true ratio-full-scan 0.4 verbose false}} opts
           ric (or (ric tx source target) (throw (IllegalStateException. (str "Failed to build data projection - no ReferrerIntegrityConstraint from collection " source " to collection " target " defined."))))
-          keys-to-collsize-ratio (/ (count keys) (-> tx :context deref target :data deref count))
+          target-count (-> tx :context deref target :data deref count)
+          keys-to-collsize-ratio (if (= target-count 0) 0 (/ (count keys) target-count))
           full-scan (> keys-to-collsize-ratio ratio-full-scan)
           _ (if (and verbose full-scan) (println :full-scan source target keys-to-collsize-ratio))
           ctx (-> tx :context deref)
           source-coll (get ctx source)]
-      (if full-scan
-        ;;in full-scan mode we just build a set of the keys provided and filter
-        (let [keys (into #{} keys)
-              xs (tx/select tx source)]
-          (filter #(contains? keys (get (last %) (.foreign-key ric))) xs))
-        (let [find-fn (fn [key]
-                        (take-while  
-                         #(= key (get (last %) (.foreign-key ric)))
-                         (map tx/user-scope-tuple
-                              (tx/select-from-coll 
-                               source-coll 
-                               [(.foreign-key ric)]
-                               >= 
-                               [key]))))
-              ;;one seq with the results for each key
-              xs ((if parallel pmap map) find-fn keys)]
-          (reduce 
-           (fn [acc x]
-             (concat acc x)) [] xs))))
+      (if (= target-count 0)
+        []
+        ;;else
+        (if full-scan
+          ;;in full-scan mode we just build a set of the keys provided and filter
+          (let [keys (into #{} keys)
+                xs (tx/select tx source)]
+            (filter #(contains? keys (get (last %) (.foreign-key ric))) xs))
+          (let [find-fn (fn [key]
+                          (take-while  
+                           #(= key (get (last %) (.foreign-key ric)))
+                           (map tx/user-scope-tuple
+                                (tx/select-from-coll 
+                                 source-coll 
+                                 [(.foreign-key ric)]
+                                 >= 
+                                 [key]))))
+                ;;one seq with the results for each key
+                xs ((if parallel pmap map) find-fn keys)]
+            (reduce 
+             (fn [acc x]
+               (concat acc x)) [] xs)))))
     {:coll-name target}))
 
 (defn >>
