@@ -289,3 +289,30 @@
                     (insert tx :line-item 1 {:no 1 :part-order 1}))
             (tree tx :line-item (select-first tx :line-item 1)))))
   => [1 {:coll :line-item, :no 1, :part-order [1 {:coll :part-order, :gaga "baba", :order [1 {:coll :order, :name :foo}], :type [1 {:coll :type}]}]}])
+
+(facts "facts about adding constraints (RICs) at runtime"
+  (let [ctx (create-context meta-model)
+        tx (create-tx ctx)]
+    (dosync
+     (insert tx :order 1 {:name :foo})
+     (insert tx :order 2 {:name :foo2})
+     (insert tx :part-order 1 {:order 1})
+     (insert tx :part-order 2 {:order 2})
+     (insert tx :part-order 3 {:order 2}))
+
+    (fact "selecting by index before adding the ric that implies the index must fail"
+      (select tx :part-order [:order] >= [2]) => (throws ConstraintException "Lambdaroyal-Memory No applicable index defined for key [:order] on collection [:part-order]"))
+
+    (add-ric ctx {:name :part-order->order :coll :part-order :foreign-coll :order :foreign-key :order})
+    (fact "adding as per constraint must be ok"
+      (dosync (insert tx :part-order 20 {:order 2})))
+    (fact 
+        "frauding the dynamically added constraint must fail"
+      (dosync
+       (insert tx :part-order 21 {:order 3})) => (throws ConstraintException))
+    (fact "selecting by index after adding the ric that implies the index must succed"
+      (distinct
+       (map 
+        #(-> % last :order) 
+        (select tx :part-order [:order] >= [2]))) => [2])))
+

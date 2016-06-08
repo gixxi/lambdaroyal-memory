@@ -5,6 +5,35 @@
   (:refer-clojure :exclude [find])
   (:gen-class))
 
+(defn- ric-factory 
+  "use this function to create a set of indexes for a single referential integrity constraint [ric]. This function might be used in order to dynamically enrich a meta modell by a new ric. the ric (map) might contain :name :coll :foreign-coll :foreign-key :name"
+  [ric]
+  (let [{:keys [coll name foreign-coll foreign-key]} ric
+        name (or name (gensym))
+        constraint (create-referrer-integrity-constraint name foreign-coll foreign-key)]
+    (list  
+      [coll constraint]
+      ;;add additional index that backs looking up referrers during deleting parent documents 
+      [coll (create-attribute-index (gensym) false [(.foreign-coll constraint)])]
+      ;;add reverse constraint - RIC on the parent/referenced collection
+      [(.foreign-coll constraint) (create-referenced-integrity-constraint (gensym) name (.foreign-key constraint))])))
+
+(defn add-ric 
+  "add a referential integrity constraint dynamically to a context [ctx]"
+  [ctx ric]
+  (dosync
+   (doseq [x (ric-factory ric)]
+     (let [[coll-name constraint] x
+           ctx @ctx
+           constraints (-> ctx coll-name :constraints)]
+       (commute constraints assoc (.name constraint) constraint)
+       ;;update and check indexes
+       (if (contains? (.application constraint) :insert)
+         (doseq [x (-> ctx coll-name :data deref)]
+           (let [[k v] x]
+             (.precommit constraint ctx coll-name :insert k v)
+             (.postcommit constraint ctx coll-name :insert x))))))))
+
 (defn referential-integrity-constraint-factory [meta-model]
   (reduce
    (fn [acc [name constraint]]

@@ -65,6 +65,17 @@
     (let [ric (-> @ctx :order :constraints deref :order)]
       (fact "RIC is not duplicated falsey" ric => falsey))))
 
+(facts "facts about adding constraints (RICs) at runtime"
+  (let [ctx (create-context meta-model)]
+    (add-ric ctx {:name :part-order->order :coll :part-order :foreign-coll :order :foreign-key :order})
+    (let [ric (-> @ctx :part-order :constraints deref :part-order->order)]
+      (fact "RIC reveals" ric => truthy)
+      (fact "RIC name is correct" (.name ric) => :part-order->order)
+      (fact "RIC target coll is correct" (.foreign-coll ric) => :order)
+      (fact "RIC key is correct" (.foreign-key ric) => :order))
+    (fact "adding a second time does not harm" 
+      (add-ric ctx {:name :part-order->order :coll :part-order :foreign-coll :order :foreign-key :order}) => nil)))
+
 
 (facts "testing the y-combinator to used build the dependency model"
   (let [model {:order [:order-type :client] :part-order [:order :article] :article [:client] :client [] :order-type []}]
