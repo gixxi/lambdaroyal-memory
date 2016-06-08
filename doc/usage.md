@@ -34,6 +34,16 @@ The subsequently picture points out those relations.
 So just ordinary clojure sequence types. The relations between the entity types are modeled as referential integrity constraints here denoted
 by *:foreign-key-constraints*
 
+## Adding Reference Integrity Constraints (RIC) at runtime
+
+Having two collections without reference integrity constraints from the very beginning is no problem. One could add a constraints from collection *:order* to collection *:type* by the following snippet
+
+```clojure
+(add-ric ctx {:name :order->type :coll :order :foreign-coll :type :foreign-key :type})
+```
+
+where :name within the passed-in map is optional
+
 ## Creating a transaction
 
 Here a *transaction* is just a small wrapper around the context. All user-scope functions for inserting, selecting and updating documents require this transaction to be scoped.
