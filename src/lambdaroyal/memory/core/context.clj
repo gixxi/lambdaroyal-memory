@@ -14,7 +14,7 @@
     (list  
       [coll constraint]
       ;;add additional index that backs looking up referrers during deleting parent documents 
-      [coll (create-attribute-index (gensym) false [(.foreign-coll constraint)])]
+      [coll (create-attribute-index (gensym) false [(.foreign-key constraint)])]
       ;;add reverse constraint - RIC on the parent/referenced collection
       [(.foreign-coll constraint) (create-referenced-integrity-constraint (gensym) name (.foreign-key constraint))])))
 
@@ -41,7 +41,7 @@
       acc 
       [name constraint]
       ;;add additional index that backs looking up referrers during deleting parent documents 
-      [name (create-attribute-index (gensym) false [(.foreign-coll constraint)])]
+      [name (create-attribute-index (gensym) false [(.foreign-key constraint)])]
       ;;add reverse constraint - RIC on the parent/referenced collection
       [(.foreign-coll constraint) (create-referenced-integrity-constraint (gensym) name (.foreign-key constraint))]))
    []
