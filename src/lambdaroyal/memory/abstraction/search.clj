@@ -211,57 +211,72 @@
         xs)))
 
 (defn ric
-  "returns the first identified ReferrerIntegrityConstraint from a collection [source] that refers to a collection [target]"
-  [tx source target]
-  {:pre [(contains? (-> tx :context deref) source)
-         (contains? (-> tx :context deref) target)]}
-  (let [ctx (-> tx :context deref)
-        source-coll (get ctx source)
-        target-coll (get ctx target)
-        constraints (map last (-> source-coll :constraints deref))
-        rics (filter
-              #(instance? ReferrerIntegrityConstraint %) constraints)] 
-    (some #(if (= (.foreign-coll %) target) %) rics)))
+  "returns the first identified ReferrerIntegrityConstraint from a collection [source] that refers to a collection [target]. If the [foreign-key] is given then we explicitly seach for a ric with a certain foreign-key."
+  ([tx source target]
+   {:pre [(contains? (-> tx :context deref) source)
+          (contains? (-> tx :context deref) target)]}
+   (let [ctx (-> tx :context deref)
+         source-coll (get ctx source)
+         target-coll (get ctx target)
+         constraints (map last (-> source-coll :constraints deref))
+         rics (filter
+               #(instance? ReferrerIntegrityConstraint %) constraints)] 
+     (some #(if (= (.foreign-coll %) target) %) rics)))
+([tx source target foreign-key]
+   {:pre [(contains? (-> tx :context deref) source)
+          (contains? (-> tx :context deref) target)]}
+   (let [ctx (-> tx :context deref)
+         source-coll (get ctx source)
+         target-coll (get ctx target)
+         constraints (map last (-> source-coll :constraints deref))
+         rics (filter
+               #(instance? ReferrerIntegrityConstraint %) constraints)] 
+     (some #(if (and 
+                 (= (.foreign-coll %) target)
+                 (= (.foreign-key %) foreign-key)) %) rics))))
 
 (defn by-ric
-  "returns all user scope tuples from collection [source] that refer to collection [target] by some ReferrerIntegrityConstraint and have foreign-key of the sequence [keys]. the sequence is supposed to be redundancy free (set). opts might contain :ratio-full-scan iff greater or equal to the ratio (count keys / number of tuples in target of [0..1]) then the source collection is fully scanned for matching tuples rather than queried by index lookups. If not given, 0.4 is the default barrier."
-  [tx source target keys & opts]
-  (with-meta 
-    (let [opts (if opts (apply hash-map opts))
-          {verbose :verbose parallel :parallel, ratio-full-scan :ratio-full-scan, :or {parallel true ratio-full-scan 0.4 verbose false}} opts
-          ric (or (ric tx source target) (throw (IllegalStateException. (str "Failed to build data projection - no ReferrerIntegrityConstraint from collection " source " to collection " target " defined."))))
-          target-count (-> tx :context deref target :data deref count)
-          keys-to-collsize-ratio (if (= target-count 0) 0 (/ (count keys) target-count))
-          full-scan (> keys-to-collsize-ratio ratio-full-scan)
-          _ (if (and verbose full-scan) (println :full-scan source target keys-to-collsize-ratio))
-          ctx (-> tx :context deref)
-          source-coll (get ctx source)]
-      (if (= target-count 0)
-        []
-        ;;else
-        (if full-scan
-          ;;in full-scan mode we just build a set of the keys provided and filter
-          (let [keys (into #{} keys)
-                xs (tx/select tx source)]
-            (filter #(contains? keys (get (last %) (.foreign-key ric))) xs))
-          (let [find-fn (fn [key]
-                          (take-while  
-                           #(= key (get (last %) (.foreign-key ric)))
-                           (map tx/user-scope-tuple
-                                (tx/select-from-coll 
-                                 source-coll 
-                                 [(.foreign-key ric)]
-                                 >= 
-                                 [key]))))
-                ;;one seq with the results for each key
-                xs ((if parallel pmap map) find-fn keys)]
-            (reduce 
-             (fn [acc x]
-               (concat acc x)) [] xs)))))
-    {:coll-name target}))
+  "returns all user scope tuples from collection [source] that refer to collection [target] by some ReferrerIntegrityConstraint and have foreign-key of the sequence [keys]. the sequence is supposed to be redundancy free (set). opts might contain :ratio-full-scan iff greater or equal to the ratio (count keys / number of tuples in target of [0..1]) then the source collection is fully scanned for matching tuples rather than queried by index lookups. If not given, 0.4 is the default barrier. If the :foreign-key is given within the opts then we explicitly seach for a ric with a certain foreign-key."
+  ([tx source target keys & opts]
+   (with-meta 
+     (let [opts (if opts (apply hash-map opts))
+           {foreign-key :foreign-key verbose :verbose parallel :parallel, ratio-full-scan :ratio-full-scan, :or {parallel true ratio-full-scan 0.4 verbose false}} opts
+           ric (or (if foreign-key 
+                     (ric tx source target foreign-key) (ric tx source target)) 
+                   (throw (IllegalStateException. (str "Failed to build data projection - no ReferrerIntegrityConstraint from collection " source " to collection " target " defined."))))
+           target-count (-> tx :context deref target :data deref count)
+           keys-to-collsize-ratio (if (= target-count 0) 0 (/ (count keys) target-count))
+           full-scan (> keys-to-collsize-ratio ratio-full-scan)
+           _ (if verbose (println :search-by-ric-keys :ric source (.foreign-key ric) "->" target :keys (count keys) :target-count target-count :ratio keys-to-collsize-ratio))
+           _ (if (and verbose full-scan) (println :full-scan source target keys-to-collsize-ratio))
+           ctx (-> tx :context deref)
+           source-coll (get ctx source)]
+       (if (= target-count 0)
+         []
+         ;;else
+         (if full-scan
+           ;;in full-scan mode we just build a set of the keys provided and filter
+           (let [keys (into #{} keys)
+                 xs (tx/select tx source)]
+             (filter #(contains? keys (get (last %) (.foreign-key ric))) xs))
+           (let [find-fn (fn [key]
+                           (take-while  
+                            #(= key (get (last %) (.foreign-key ric)))
+                            (map tx/user-scope-tuple
+                                 (tx/select-from-coll 
+                                  source-coll 
+                                  [(.foreign-key ric)]
+                                  >= 
+                                  [key]))))
+                 ;;one seq with the results for each key
+                 xs ((if parallel pmap map) find-fn keys)]
+             (reduce 
+              (fn [acc x]
+                (concat acc x)) [] xs)))))
+     {:coll-name target})))
 
 (defn >>
-  "Pipe, Convenience Function. A higher order function that returns a function taking a transaction [tx] and a set of user scope tupels into account that MUST aggregate as meta data key :coll-name the collection the tupels belong to, the lambda returns itself a by-ric from source collection as per the input xs to target location. The filter is applied to the xs."
+  "Pipe, Convenience Function. A higher order function that returns a function taking a transaction [tx] and a set of user scope tupels into account that MUST aggregate as meta data key :coll-name the collection the tupels belong to, the lambda returns itself a by-ric from source collection as per the input xs to target location. The filter is applied to the xs. If the :foreign-key is given within the opts then we explicitly seach for a ric with a certain foreign-key."
   [target filter-fn & opts]
   (fn [tx xs]
     {:pre [(-> xs meta :coll-name)]}
@@ -270,7 +285,7 @@
       {:coll-name target})))
 
 (defn >>>
-  "Pipe, Convenience Function. A higher order function that returns a function taking a transaction [tx] and a set of user scope tupels into account that MUST aggregate as meta data key :coll-name the collection the tupels belong to, the lambda returns itself a by-ric from source collection as per the input xs to target location."
+  "Pipe, Convenience Function. A higher order function that returns a function taking a transaction [tx] and a set of user scope tupels into account that MUST aggregate as meta data key :coll-name the collection the tupels belong to, the lambda returns itself a by-ric from source collection as per the input xs to target location. If the :foreign-key is given within the opts then we explicitly seach for a ric with a certain foreign-key."
   [target & opts]
   (apply >> target (fn [x] true) opts))
 

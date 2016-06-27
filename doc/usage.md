@@ -327,6 +327,8 @@ Here _opts_ can contain
 
 * *:ratio-full-scan* iff greater or equal to the ratio (count keys / number of tuples in target of [0..1]) then the source collection is fully scanned for matching tuples rather than queried by index lookups. If not given, 0.4 is the default barrier.
 * *:parallel* iff true (default) then all the index lookups as per individual input user tupels are performed concurrently
+* *:verbose* iff true then one get statistics information on projection internals like full-scan vs. recurring index seeks as well as size of the target collection
+* *:foreign-key* iff given and multiple RICs associate collection a to collection b, then this key uniquely denotes the RIC to take into account for the projection
   
 # Getting Data Hierarchies
 
