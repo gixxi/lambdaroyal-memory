@@ -223,20 +223,25 @@
     (fact "must not insert part order with inexisting type"
       (dosync
        (insert tx :part-order 1 {:type 1})) => (throws ConstraintException #".+?integrity constraint violated.*"))
-    (dosync (insert tx :type 1 {}))
+    (dosync (insert tx :type 1 {})
+            (insert tx :type 2 {}))
     (fact "must not insert part order with inexisting order"
       (dosync
        (insert tx :part-order 1 {:type 1 :order 1})) => (throws ConstraintException #".+?integrity constraint violated.*"))
     (dosync (insert tx :order 1 {:name :foo}))
+    (dosync (insert tx :order 2 {:name :foo2}))
     (fact "can insert part order after ensuring foreign key constraints"
       (dosync
        (insert tx :part-order 1 {:type 1 :order 1})))
     (fact "can insert part order #2 after ensuring foreign key constraints"
       (dosync
        (insert tx :part-order 2 {:type 1 :order 1})))
+    (fact "can insert part order #2 after ensuring foreign key constraints"
+      (dosync
+       (insert tx :part-order 3 {:type 2 :order 2})))
     (fact "must not alter part order to refer a non existing type"
       (dosync
-       (alter-document tx :part-order (select-first tx :part-order 1) assoc :type 2)) => (throws ConstraintException #".+?integrity constraint violated.*"))
+       (alter-document tx :part-order (select-first tx :part-order 1) assoc :type 3)) => (throws ConstraintException #".+?integrity constraint violated.*"))
     (fact "part-order must be unchanged after transaction failed"
       (-> (select-first tx :part-order 1) last :type) => 1)
     (fact "must not delete order with referencing part orders"
