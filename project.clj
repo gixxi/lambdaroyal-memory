@@ -1,12 +1,14 @@
-(defproject org.clojars.gixxi/lambdaroyal-memory "0.6.0-SNAPSHOT"
+(defproject org.clojars.gixxi/lambdaroyal-memory "0.6.1-SNAPSHOT"
   :description "STM-based in-memory database storing persistent data structures"
   :url "https://github.com/gixxi/lambdaroyal-memory"
   :license {:name "FreeBSD License"
             :url "http://www.freebsd.org/copyright/freebsd-license.html"}
-  :dependencies [[org.clojure/clojure "1.7.0-alpha5"]
-                 [org.clojure/core.typed "0.3.0-alpha2"]
-                 [org.clojure/core.async "0.1.346.0-17112a-alpha"]
+  :dependencies [[org.clojure/clojure "1.8.0-RC4"]
+                 [org.clojure/tools.cli "0.3.3"]
+                 [org.clojure/core.async "0.2.374"]
                  [clj-http "2.0.0"]
+                 ;;accepting nRepl Connections
+                 [org.clojure/tools.nrepl "0.2.12"]
                  [com.ashafa/clutch "0.4.0"
                   :exclusions [clj-http]]
                  [org.clojure/tools.logging "0.3.1"]

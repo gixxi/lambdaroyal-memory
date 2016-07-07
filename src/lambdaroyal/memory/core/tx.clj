@@ -224,7 +224,9 @@
     (precommit [this ctx coll application key value]
       {:pre [(contains? ctx referencing-coll)]}
       (let [;;select the referencee using the automatically generated index on the referencing-key
-            match (first (select-from-coll (get ctx referencing-coll) [referencing-key] >= [key]))]
+            match (first (take-while
+                          #(= key (-> % last deref referencing-key))
+                          (select-from-coll (get ctx referencing-coll) [referencing-key] >= [key])))]
         (if (and match (= (-> match meta :unique-key)))
           (throw (create-constraint-exception coll key (format "referenced integrity constraint violated. a document with key %s within collection %s references this document" referencing-coll referencing-key))))))
     (postcommit [this ctx coll application coll-tuple] nil))
