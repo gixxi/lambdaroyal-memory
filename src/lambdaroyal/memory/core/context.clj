@@ -1,7 +1,7 @@
 (ns lambdaroyal.memory.core.context
   (require [lambdaroyal.memory.core.tx :refer :all])
   (require [lambdaroyal.memory.eviction.core :refer [create-proxy]])
-  (import [lambdaroyal.memory.core.tx ReferrerIntegrityConstraint])
+  (import [lambdaroyal.memory.core.tx ReferrerIntegrityConstraint ReferencedIntegrityConstraint AttributeIndex])
   (:refer-clojure :exclude [find])
   (:gen-class))
 
@@ -17,7 +17,7 @@
       ;;add additional index that backs looking up referrers during deleting parent documents 
       [coll (create-attribute-index (gensym) unique [(.foreign-key constraint)])]
       ;;add reverse constraint - RIC on the parent/referenced collection
-      [(.foreign-coll constraint) (create-referenced-integrity-constraint (gensym) name (.foreign-key constraint))])))
+      [(.foreign-coll constraint) (create-referenced-integrity-constraint name coll (.foreign-key constraint))])))
 
 (defn add-ric 
   "add a referential integrity constraint dynamically to a context [ctx]"
@@ -40,27 +40,38 @@
   [ctx source target foreign-key]
    (let [ctx @ctx
          source-coll (get ctx source)
-         target-coll (get ctx target)
-         rics (filter
-               #(instance? ReferrerIntegrityConstraint %) (map last (-> source-coll :constraints deref)))] 
+         target-coll (get ctx target)] 
      (dosync
+      ;;delete forward references
       (doseq [constraint (filter #(and 
                           (= (.foreign-coll %) target)
-                          (= (.foreign-key %) foreign-key)) rics)]
+                          (= (.foreign-key %) foreign-key))
+                                 (filter
+                                  #(instance? ReferrerIntegrityConstraint %) (map last (-> source-coll :constraints deref))))]
+        (commute (:constraints source-coll) dissoc (.name constraint)))
+      ;;delete backward reference
+      (doseq [constraint (filter #(and 
+                          (= (.referencing-coll %) source)
+                          (= (.referencing-key %) foreign-key))
+                                 (filter
+                                  #(instance? ReferencedIntegrityConstraint %) (map last (-> target-coll :constraints deref))))]
+        (commute (:constraints target-coll) dissoc (.name constraint)))
+      ;;delete index backing the ric
+      (doseq [constraint (filter #(= (.attributes %) [foreign-key])
+                                 (filter
+                                  #(instance? AttributeIndex %) (map last (-> source-coll :constraints deref))))]
         (commute (:constraints source-coll) dissoc (.name constraint))))))
-
-
 
 (defn referential-integrity-constraint-factory [meta-model]
   (reduce
-   (fn [acc [name unique constraint]]
+   (fn [acc [coll unique constraint]]
      (conj 
       acc 
-      [name constraint]
+      [coll constraint]
       ;;add additional index that backs looking up referrers during deleting parent documents 
-      [name (create-attribute-index (gensym) unique [(.foreign-key constraint)])]
+      [coll (create-attribute-index (gensym) unique [(.foreign-key constraint)])]
       ;;add reverse constraint - RIC on the parent/referenced collection
-      [(.foreign-coll constraint) (create-referenced-integrity-constraint (gensym) name (.foreign-key constraint))]))
+      [(.foreign-coll constraint) (create-referenced-integrity-constraint (.name constraint) coll (.foreign-key constraint))]))
    []
    (map
     (fn [constraint]
