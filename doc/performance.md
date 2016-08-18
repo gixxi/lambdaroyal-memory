@@ -52,7 +52,14 @@ Projecting data is like querying relations using joins in relational database, u
 
 # Machine & runtime specs
 
-* Memory:        3970036 kB
-* CPU:           Intel(R) Core(TM) i5-2467M CPU @ 1.60GHz
+* Memory:        4 GB RAM, 1300 Mhz
+* CPU:           Intel(R) Core(TM) i5-2467M CPU @ 1.60GHz, 2 Cores
 * Java HotSpot(TM) 64-Bit Server VM (build 25.40-b25, mixed mode)
 * org.clojure/clojure "1.7.0-alpha5"
+
+Starting from *2016-08-17* we perform this tests on a 
+
+* Memory:        16 GB RAM, 2100 Mhz
+* CPU:           Intel(R) Core(TM) i7-6700HQ CPU @ 2.60GHz, 4 Cores + Hyperthreading
+* Java(TM) SE Runtime Environment (build 1.8.0_91-b14)
+* org.clojure/clojure "1.8.0-RC4"

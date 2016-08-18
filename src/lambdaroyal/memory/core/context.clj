@@ -35,6 +35,22 @@
              (.precommit constraint ctx coll-name :insert k v)
              (.postcommit constraint ctx coll-name :insert x))))))))
 
+(defn remove-ric
+  "removes all referential integrity constraints from the context [ctx] that refer the target collection [target] from the source collection [source]. The [foreign-key] within the source collection all the respective RICs need to match"
+  [ctx source target foreign-key]
+   (let [ctx @ctx
+         source-coll (get ctx source)
+         target-coll (get ctx target)
+         rics (filter
+               #(instance? ReferrerIntegrityConstraint %) (map last (-> source-coll :constraints deref)))] 
+     (dosync
+      (doseq [constraint (filter #(and 
+                          (= (.foreign-coll %) target)
+                          (= (.foreign-key %) foreign-key)) rics)]
+        (commute (:constraints source-coll) dissoc (.name constraint))))))
+
+
+
 (defn referential-integrity-constraint-factory [meta-model]
   (reduce
    (fn [acc [name unique constraint]]
