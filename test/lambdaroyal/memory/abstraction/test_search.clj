@@ -15,11 +15,17 @@
    :c
    {:unique true :indexes []}})
 
-(defn search-coll [ctx coll-name]
+(defn search-coll ([ctx coll-name]
   (abstract-search 
    (fn [query]
      (let [tx (create-tx ctx)]
        (select tx coll-name >= query)))))
+  ([ctx coll-name stop-condition]
+  (abstract-search 
+   (fn [query]
+     (let [tx (create-tx ctx)]
+       (take-while (fn [x] (not (inc-and-check-break-condition-reached stop-condition)))
+                   (select tx coll-name >= query)))))))
 
 (facts "doing parallel combined search using core/async"
   (let [ctx (create-context meta-model)
@@ -32,6 +38,8 @@
                                      (insert tx % r {:foo :bar :i r :coll %}))))
                                '(:a :b :c))]
                         @r))
+        delay1 (atom 0)
+        delay2 (atom 0)
         _ (println "warmup took (ms) " (first warmup))]
     (fact "doing searching for all without time constraints must return 30000 elems"
       (let [result (atom [])
@@ -41,8 +49,44 @@
                           (search-coll ctx :b)
                           (search-coll ctx :c)]
                          aggregator 0
-                         :finish-callback (fn [] (deliver result-promise @result)))
+                         :finish-callback (fn [] 
+                                            (deliver result-promise @result)))
         (count @result-promise)) => 30000)
+
+
+    (fact "doing searching for 200 elements without time constraints must return 30000 elems"
+      (let [break-condition-state (break-condition-state 200)
+            result (atom [])
+            result-promise (promise)
+            aggregator (fn [n] (swap! result concat n))
+            start (System/currentTimeMillis)]
+        (combined-search [(search-coll ctx :a break-condition-state)
+                          (search-coll ctx :b break-condition-state)
+                          (search-coll ctx :c break-condition-state)]
+                         aggregator 0
+                         :finish-callback (fn [] 
+                                            (do
+                                              (reset! delay1 (- (System/currentTimeMillis) start))
+                                              (deliver result-promise @result))))
+        (count @result-promise)) => 200)
+
+    (fact "doing searching for 40000 elements without time constraints must return 30000 elems that are present"
+      (let [break-condition-state (break-condition-state 40000)
+            result (atom [])
+            result-promise (promise)
+            aggregator (fn [n] (swap! result concat n))
+            start (System/currentTimeMillis)]
+        (combined-search [(search-coll ctx :a break-condition-state)
+                          (search-coll ctx :b break-condition-state)
+                          (search-coll ctx :c break-condition-state)]
+                         aggregator 0
+                         :finish-callback (fn [] 
+                                            (do
+                                              (reset! delay2 (- (System/currentTimeMillis) start))
+                                              (deliver result-promise @result))))
+        (count @result-promise)) => 30000)
+
+    (println (format "search for 200 took (ms) %d, and for 40000 took (ms) %d " @delay1 @delay2))
 
     (fact "doing searching for all without time constraints but with minority (2) report must return 20000 elems"
       (let [result (atom [])

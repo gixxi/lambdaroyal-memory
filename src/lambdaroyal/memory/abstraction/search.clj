@@ -7,8 +7,31 @@
 ;; TYPE ABSTRACTIONS
 ;; --------------------------------------------------------------------
 
+(defn break-condition-state "creates a map with :result-count, :max-result-count as well as :stop-feeding-aggregator that can be optionally feeded to a combined search in order to dynamically stop async searches when individual search function returned enough results"
+  [max-result-count]
+  {:max-result-count max-result-count
+   :result-count (atom 0)
+   :stop-feeding-aggregator (atom false)})
+
+(defn check-break-condition-reached [break-condition-state]
+  (if break-condition-state
+    (> @(:result-count break-condition-state) (:max-result-count break-condition-state))
+    false))
+
+(defn inc-and-check-break-condition-reached [break-condition-state]
+  (if break-condition-state
+    (if (> (swap! (:result-count break-condition-state) inc) (:max-result-count break-condition-state))
+      (do (reset! (:stop-feeding-aggregator break-condition-state) true) true)
+      false)
+    false))
+
+(defn is-stop-feeding-aggregator [break-condition-state]
+  (if break-condition-state
+    @(:stop-feeding-aggregator break-condition-state)
+    false))
+
 (defn abstract-search 
-  "higher order function - takes a function [fn] that returns a lazy sequence [s] of user-scope tuples from lambdaroyal memory. This function returns a function that returns a channel where the result of the function fn, s is pushed to"
+  "higher order function - takes a function [fn] that returns a lazy sequence [s] of user-scope tuples from lambdaroyal memory. This function returns a function that returns a channel where the result of the function fn, s is pushed to."
   [λ]
   (fn [args]
     (let [c (chan)]
@@ -22,25 +45,40 @@
   The following options are accepted\n 
   :timeout value in ms after which the aggregator channel is closed, no more search results are considered.\n
   :minority-report number of search function fn in [fns] that need to result in order to close the aggregator channel is closed and no more search results are considered.\n
-  :finish-callback a function with no params that gets called when the aggregator go block stops."
+  :finish-callback a function with no params that gets called when the aggregator go block stops.
+
+  :break-condition-state containing ...
+  :max-result-count a long denoting the max number of results to be considered. MUST BE USED IN CONJUNCTION WITH :result-count. Is relevant iff all individual search functions return a sequence. Keep in mind that the individual search functions
+  are responsible for altering the reference of :result-count
+  :result-count an atom referencing a long denoting the current number of results fetched so far. MUST BE USED IN CONJUNCTION WITH :max-result-count. Keep in mind that the individual search functions
+  are responsible for altering the reference of :result-count
+  :stop-feeding-aggregator an atom referencing a long. set by aggregator function in order to stop the loop receiving results from individual search functions. CAN BE USED IN CONJUNCTION WITH :max-result-count and :result-count."
   [fns agr query & opts]
   (let [opts (apply hash-map opts)
         c (chan)
         t (if (:timeout opts) (timeout (:timeout opts)) nil)
         limit (or (:minority-report opts) (count fns))
+        ;;fire of all searches in parallel - don't run them if we got too much so far
+        fn-count (reduce
+           (fn [acc λ]
+             (if (not (check-break-condition-reached (:break-condition-state opts)))
+               (do
+                 (go (>! c (<! (λ query))))
+                 (inc acc))
+               acc))
+           0 fns)
         ;;jerk the jokers
-        limit (min limit (count fns))]
-    ;;fire of all searches in parallel
-    (doseq [λ fns]
-      (go (>! c (<! (λ query)))))
+        limit (min limit fn-count)]
+    
     ;;fire of the aggregator (controller) go block
     (go
       (loop [i 0 stop false]
         (if 
-            ;;recur until we reach timeout or all searches returned
+            ;;recur until we reach timeout or all searches returned or we got enough juice
             (or 
              (>= i limit)
-             stop)
+             stop
+             (is-stop-feeding-aggregator (:break-condition-state opts)))
           (if (:finish-callback opts) ((:finish-callback opts)))
           (let [next (if t 
                        ;;take result or bump timeout
@@ -48,7 +86,8 @@
                        ;;else : wait indef for result
                        (<! c))]
             ;;send most recent search result (next) to the aggregator
-            (if next (agr next))
+            (if next
+              (agr next))
             ;;loop - wait for the next
             (recur (inc i) (nil? next))))))))
 

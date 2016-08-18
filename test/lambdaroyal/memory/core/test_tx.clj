@@ -162,12 +162,12 @@
       (.applicable? idx-client-no [:no :client]) => falsey)
     (fact "index :client reveals 500 entries"
       (count (.find idx-client >= [0] < [1])) => 500)
-    (fact "finding using index must outperform non-index filter by factor 10"
-      (< (* 10 (first timed-find))
+    (fact "finding using index must outperform non-index filter by factor 5"
+      (< (* 5 (first timed-find))
          (first timed-select))
       => truthy)
-    (fact "finding using auto-selected index must outperform non-index filter by factor 10"
-      (< (* 10 (first timed-auto-find))
+    (fact "finding using auto-selected index must outperform non-index filter by factor 5"
+      (< (* 5 (first timed-auto-find))
          (first timed-select)))
     (fact "find and select must reveal the same items"
       (-> timed-find last count) =>
