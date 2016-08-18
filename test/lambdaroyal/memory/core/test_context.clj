@@ -65,16 +65,23 @@
     (let [ric (-> @ctx :order :constraints deref :order)]
       (fact "RIC is not duplicated falsey" ric => falsey))))
 
-(facts "facts about adding constraints (RICs) at runtime"
+(facts "facts about adding and removing constraints (RICs) at runtime"
   (let [ctx (create-context meta-model)]
     (add-ric ctx {:name :part-order->order :coll :part-order :foreign-coll :order :foreign-key :order})
+    (add-ric ctx {:name :part-order->order#2 :coll :part-order :foreign-coll :order :foreign-key :order2})
     (let [ric (-> @ctx :part-order :constraints deref :part-order->order)]
       (fact "RIC reveals" ric => truthy)
       (fact "RIC name is correct" (.name ric) => :part-order->order)
       (fact "RIC target coll is correct" (.foreign-coll ric) => :order)
       (fact "RIC key is correct" (.foreign-key ric) => :order))
     (fact "adding a second time does not harm" 
-      (add-ric ctx {:name :part-order->order :coll :part-order :foreign-coll :order :foreign-key :order}) => nil)))
+      (add-ric ctx {:name :part-order->order :coll :part-order :foreign-coll :order :foreign-key :order}) => nil)
+    (fact "removing the RIC works"
+      (do
+        (remove-ric ctx :part-order :order :order)
+        (-> @ctx :part-order :constraints deref :part-order->order)) => nil)
+    (fact "all other dynamically added rics must still be present"
+        (-> @ctx :part-order :constraints deref :part-order->order#2) => truthy)))
 
 
 (facts "testing the y-combinator to used build the dependency model"
