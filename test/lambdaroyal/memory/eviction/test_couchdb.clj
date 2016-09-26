@@ -24,12 +24,16 @@
         _ @(.start (-> @ctx :order :evictor) ctx [(:order @ctx)])]
     (fact "cannot start calling user-scope functions until eviction channel is not started" (create-tx ctx) => truthy)))
 
+(defn start-coll [ctx coll]
+  @(.start (-> @ctx coll :evictor) ctx [(get @ctx coll)]))
+
 (facts "inserting into an empty couch db instance"
-  (let [meta-model
-        {:order {:unique true :indexes [] :evictor (evict-couchdb/create) :evictor-delay 1000}}
+  (let [evictor (evict-couchdb/create)
+        meta-model
+        {:order {:unique true :indexes [] :evictor evictor :evictor-delay 1000}}
         ctx (create-context meta-model)
         _ (clutch/delete-database (evict-couchdb/get-database-url (-> @ctx :order :evictor :url) (name :order)))
-        _ @(.start (-> @ctx :order :evictor) ctx [(:order @ctx)])
+        _ (start-coll ctx :order)
         tx (create-tx ctx)]
     (try
       (let [_
@@ -42,21 +46,48 @@
            (alter-document tx :order d assoc :run 1)))
         (dosync
          (doseq [d (drop 50 inserted)]
-           (delete tx :order (first d)))))
+           (delete tx :order (first d))))
+        ;; delete the couchdb collection that will be added right after from previous attempts
+        (clutch/delete-database (evict-couchdb/get-database-url (-> @ctx :order :evictor :url) (name :part-order)))
+        (clutch/delete-database (evict-couchdb/get-database-url (-> @ctx :order :evictor :url) (name :line-item)))
+        ;; insert a collection dynamically
+        (let [new-collection (add-collection ctx  {:name :part-order :evictor (-> @ctx :order :evictor) :evictor-delay 1000
+                                                   :foreign-key-constraints [{:name :order :foreign-coll :order :foreign-key :order}]})]
+          (start-coll ctx :part-order))
+        _ (let [new-collection (add-collection ctx  {:name :line-item :evictor (-> @ctx :order :evictor) :evictor-delay 1000
+                                                     :foreign-key-constraints [{:name :part-order :foreign-coll :part-order :foreign-key :part-order}]})]
+          (start-coll ctx :line-item))
+        ;; insert to the new collection
+        (dosync 
+         (insert (create-tx ctx) :part-order 1 {:type :gaga :order 1 :receiver :foo :run 2})
+         (insert (create-tx ctx) :line-item 1 {:part-order 1})))
       (finally
         (.stop (-> @ctx :order :evictor))
+        (.stop (-> @ctx :part-order :evictor))
         (-> @ctx :order :evictor :consumer deref))))
   ;;read again
-  (let [meta-model
-        {:order {:unique true :indexes [] :evictor (evict-couchdb/create) :evictor-delay 1000}}
+  (let [evictor (evict-couchdb/create)
+        meta-model
+        {:order {:unique true :indexes [] :evictor evictor :evictor-delay 1000}}
         ctx (create-context meta-model)
         _ @(.start (-> @ctx :order :evictor) ctx [(:order @ctx)])
+        ;; insert the collection dynamically (again)
+        _ (let [new-collection (add-collection ctx  {:name :part-order :evictor evictor :evictor-delay 1000
+                                                     :foreign-key-constraints [{:name :order :foreign-coll :order :foreign-key :order}]})]
+          (start-coll ctx :part-order))
+        _ (let [new-collection (add-collection ctx  {:name :line-item :evictor evictor :evictor-delay 1000
+                                                     :foreign-key-constraints [{:name :part-order :foreign-coll :part-order :foreign-key :part-order}]})]
+          (start-coll ctx :line-item))
         tx (create-tx ctx)
         _ (println :queue (-> @ctx :order :evictor .queue .size))]
     (try
       (let [inserted
             (dosync
              (select tx :order >= 0))]
+        (fact "evictor must reveal the document of the dynamically add collection"
+              (select-first tx :part-order 1) => truthy)
+        (fact "deleting the part-order must delete the RIC from referencing coll :line-item" 
+              (delete-collection ctx :part-order) => [:line-item])
         (fact "must reload all documents during ramp-up"
           (apply + (map #(-> % last :run) inserted)) => 50)
         (fact "couchdb must reflect the deletion of 50 out of 100 documents" (count (select tx :order >= 0)) => 50))
