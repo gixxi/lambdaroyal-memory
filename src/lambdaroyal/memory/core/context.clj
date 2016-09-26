@@ -85,7 +85,7 @@
               (concat acc (map #(assoc % :coll k) v))) []
               (zipmap (keys meta-model) (map :foreign-key-constraints (vals meta-model)))))))
 
-(defn- create-collection [collection meta-model referential-integrity-constraints]
+(defn- create-collection [collection referential-integrity-constraints]
   (let [fn-constraint-factory 
         (fn [collection]
           ;;we assume all collections to be unique (CR 20150620)
@@ -119,11 +119,82 @@
                       {}
                       referential-integrity-constraints)))})))
 
+(defn add-collection 
+  "adds a collection with spec to the context [ctx]. returns the collection itself. Don't forget to call start on the respective evictor channel"
+  [ctx coll]
+  {:pre [(contains? coll :name) (not (contains? @ctx (:name coll))) ]}
+  (let [coll' (create-collection coll (list))]
+    (do
+      (dosync
+       (alter ctx assoc (:name coll) coll')
+       (doseq [x (:foreign-key-constraints coll)]
+         (add-ric ctx (assoc x :coll (:name coll)))))
+      coll')))
+
+(defn- get-referencing-colls
+  "get all the names of collections that reference the collection with name [coll]"
+  [ctx coll]
+  (let [ctx @ctx
+        coll' (get ctx coll)]
+      (map #(.referencing-coll %)
+           (filter
+            #(instance? ReferencedIntegrityConstraint %) 
+            (map last (-> coll' :constraints deref))))))
+
+(defn- get-referenced-colls
+  "get all the names of collections that are referenced by the collection with name [coll]"
+  [ctx coll]
+  (let [ctx @ctx
+        coll' (get ctx coll)]
+      (map #(.foreign-coll %)
+           (filter
+            #(instance? ReferrerIntegrityConstraint %) 
+            (map last (-> coll' :constraints deref))))))
+
+(defn- delete-referencing-constraints
+  "delete all referencing constraints from a collection [source] to a target collection [target]"
+  [ctx source target]
+  (let [ctx @ctx
+        source-coll (get ctx source)]
+      (doseq [constraint (filter #(= (.foreign-coll %) target)
+                                 (filter
+                                  #(instance? ReferrerIntegrityConstraint %) (map last (-> source-coll :constraints deref))))]
+        (commute (:constraints source-coll) dissoc (.name constraint)))))
+
+(defn- delete-referenced-constraints
+  "delete all referencing constraints from a collection [source] to a target collection [target]"
+  [ctx source target]
+  (let [ctx @ctx
+        target-coll (get ctx target)]
+      (doseq [constraint (filter #(= (.referencing-coll %) source)
+                                 (filter
+                                  #(instance? ReferencedIntegrityConstraint %) (map last (-> target-coll :constraints deref))))]
+        (commute (:constraints target-coll) dissoc (.name constraint)))))
+
+(defn delete-collection
+  "removes a collection with name [coll]. All RICs of referencing colls will be deleted. All referencing colls are returned."
+  [ctx coll]
+  {:pre [(contains? @ctx coll) ]}
+  (let [coll' (get @ctx coll)
+        referenced-colls (get-referenced-colls ctx coll)
+        referencing-colls (get-referencing-colls ctx coll)]
+    (do
+      (io!
+       (dosync
+        (doseq [referencing-coll referencing-colls]
+          (delete-referencing-constraints ctx referencing-coll coll))
+        (doseq [referenced-coll referenced-colls]
+          (delete-referenced-constraints ctx coll referenced-coll))
+        (alter ctx dissoc coll)))
+      (if-let [evictor (:evictor coll')]
+        (.delete-coll evictor coll))
+      referencing-colls)))
+  
 (defn create-context [meta-model]
   (let [rics (referential-integrity-constraint-factory meta-model)]
     (ref (zipmap (keys meta-model) 
                  (map 
-                  #(create-collection % meta-model rics) 
+                  #(create-collection % rics) 
                   (map #(assoc %1 :name %2) (vals meta-model) (keys meta-model)))))))
 
 (defn dependency-order 

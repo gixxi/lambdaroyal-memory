@@ -72,12 +72,25 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
         (log/fatal (format "failed to delete document %s from couchdb. stop eviction channel." existing))
         (.stop channel)))))
 
+(defn- delete-coll
+  "deletes a document db from the couchdb"
+  [channel coll-name]
+  (try
+    (do
+      (clutch/delete-database
+       (get-database channel coll-name)))
+    (catch Exception e
+      (log/fatal (format "failed to delete db %s from couchdb. stop eviction channel." coll-name))
+      (.stop channel))))
+
 (defrecord CouchEvictionChannel [url prefix revs ^clojure.lang.Atom started]
   evict/EvictionChannel
   (start [this ctx colls]
     (future
       ;;order them by referential integrity constraints
-      (let [colls (dependency-model-ordered colls)]
+      (let [colls (if (> (count colls) 1) 
+                    (dependency-model-ordered colls)
+                    colls)]
         (do
           (doseq [r colls]
             (log/debug (format "read-in collection %s" (:name r))))
@@ -97,7 +110,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
                       (swap! (.revs this) assoc [(:name %) (first user-scope-tuple)] (:_rev existing))))
                   (log/info (format "collection %s contains %d documents" (:name %) (count docs)))))
              colls)))
-          (swap! (.started this) not)))))
+          (reset! (.started this) true)))))
   (started? [this] @(.started this))
   (stopped? [this] nil)
   (insert [this coll-name unique-key user-value]
@@ -107,7 +120,9 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
     (if @(.started this)
       (put-document this coll-name unique-key new-user-value)))
   (delete [this coll-name unique-key]
-    (if @(.started this) (delete-document this coll-name unique-key))))
+    (if @(.started this) (delete-document this coll-name unique-key)))
+  (delete-coll [this coll-name]
+    (if @(.started this) (delete-coll this coll-name))))
 
 (defn create 
   "provide custom url by calling this function with varargs :url \"https://username:password@account.cloudant.com\""

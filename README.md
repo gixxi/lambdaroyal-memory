@@ -40,11 +40,13 @@ Runtime for inserting 30000 complex documents with several secondary indexes and
 
 Machine & Runtime Specs
 
+*Migrated from i5 to i7 in Sept. 2016*
+
 ```
-Memory:        3970036 kB
-CPU:           Intel(R) Core(TM) i5-2467M CPU @ 1.60GHz
-Java HotSpot(TM) 64-Bit Server VM (build 25.40-b25, mixed mode)
-org.clojure/clojure "1.7.0-alpha5"
+Memory:        16GB RAM @ 2133 Mhz
+CPU:           Intel(R) Core(TM) i7-6700HQ CPU @ 2.60GHz
+Java(TM) SE Runtime Environment (build 1.8.0_91-b14)
+org.clojure/clojure "1.8.0-RC4"
 ```
 
 ## Conceptual Data Model

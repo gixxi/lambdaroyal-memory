@@ -10,7 +10,8 @@
   (stopped? [this] "returns true iff the channel was closed.")
   (insert [this coll-name unique-key user-value] "called when a new value gets inserted into the database.")
   (update [this coll-name unique-key old-user-value new-user-value] "called when an update took place")
-  (delete [this coll-name unique-key] "called when a delete took place"))
+  (delete [this coll-name unique-key] "called when a delete took place")
+  (delete-coll [this coll-name] "call this to delete the respective collection/db at all"))
 
 (defrecord EvictionChannelProxy [queue delay stopped eviction-channel]
   EvictionChannel
@@ -26,7 +27,10 @@
       (.add (.queue this) [:update eviction-channel coll-name unique-key old-user-value new-user-value])))
   (delete [this coll-name unique-key]
     (if (-> this .eviction-channel .started?)
-    (.add (.queue this) [:delete eviction-channel coll-name unique-key]))))
+    (.add (.queue this) [:delete eviction-channel coll-name unique-key])))
+  (delete-coll [this coll-name]
+    (if (-> this .eviction-channel .started?)
+      (.delete-coll (-> this .eviction-channel) coll-name))))
 
 (defn create-proxy [eviction-channel delay]
   (let [proxy
@@ -63,7 +67,9 @@
   (update [this coll-name unique-key old-user-value new-user-value]
     (println :update coll-name unique-key))
   (delete [this coll-name unique-key]
-    (println :delete coll-name unique-key)))
+    (println :delete coll-name unique-key))
+  (delete-coll [this coll-name]
+    (println :delete-coll coll-name)))
 
 (defn create-SysoutEvictionChannel []
   (SysoutEvictionChannel. (atom false) (atom true)))

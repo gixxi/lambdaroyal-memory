@@ -23,7 +23,8 @@
   (delete [this coll-name unique-key]
     (do
       (println :delete)
-      (swap! delete-count inc))))
+      (swap! delete-count inc)))
+  (delete-coll [this coll-name] nil))
 
 (def insert-count (atom 0))
 (def update-count (atom 0))
