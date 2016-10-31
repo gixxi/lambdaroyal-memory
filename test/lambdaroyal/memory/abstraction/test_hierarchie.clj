@@ -1,5 +1,5 @@
 (ns lambdaroyal.memory.abstraction.test-hierarchie
-  (require [midje.sweet :refer :all]
+  (:require [midje.sweet :refer :all]
            [lambdaroyal.memory.abstraction.hierarchie :refer :all]
            [clojure.test :refer :all])
   (import  [lambdaroyal.memory.core ConstraintException]))

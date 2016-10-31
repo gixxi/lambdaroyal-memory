@@ -1,5 +1,5 @@
 (ns lambdaroyal.memory.storage.ds.test-sorted-map-speed
-  (require [midje.sweet :refer :all]
+  (:require [midje.sweet :refer :all]
            [lambdaroyal.memory.helper :refer :all])
   (:gen-class))
 

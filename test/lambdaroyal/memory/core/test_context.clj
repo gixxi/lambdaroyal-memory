@@ -1,5 +1,5 @@
 (ns lambdaroyal.memory.core.test-context
-  (require [midje.sweet :refer :all]
+  (:require [midje.sweet :refer :all]
            [lambdaroyal.memory.core.context :refer :all])
   (import [lambdaroyal.memory.core.tx Constraint ReferrerIntegrityConstraint ReferencedIntegrityConstraint AttributeIndex]))
 

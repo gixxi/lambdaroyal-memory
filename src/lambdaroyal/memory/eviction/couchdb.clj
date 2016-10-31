@@ -1,7 +1,7 @@
 (ns ^{:doc "An Eviction Channel that uses a Couch DB server to load persistent data and to backup all transaction to. The couch db server
 is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcouchdb.url or individually configured per eviction channel instance"} 
   lambdaroyal.memory.eviction.couchdb
-  (require [lambdaroyal.memory.eviction.core :as evict]
+  (:require [lambdaroyal.memory.eviction.core :as evict]
            [lambdaroyal.memory.core.context :refer :all]
            [lambdaroyal.memory.core.tx :refer :all]
            [lambdaroyal.memory.helper :refer :all]
@@ -11,7 +11,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
            [clojure.java.io :as io]
            [clojure.tools.logging :as log]
            [clojure.set :refer [union]])
-  (import [java.net ConnectException]))
+  (:import [java.net ConnectException]))
 
 (defn- check-couchdb-connection [url]
   (let [_ (log/info (format "try to access couchdb server using url %s" url))

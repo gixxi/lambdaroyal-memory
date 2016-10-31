@@ -1,9 +1,9 @@
 (ns lambdaroyal.memory.eviction.test-core
-  (require [midje.sweet :refer :all]
+  (:require [midje.sweet :refer :all]
            [lambdaroyal.memory.eviction.core :as evict]
            [lambdaroyal.memory.core.context :refer :all]
            [lambdaroyal.memory.core.tx :refer :all])
-  (import [lambdaroyal.memory.core ConstraintException]))
+  (:import [lambdaroyal.memory.core ConstraintException]))
 
 
 (defrecord CounterEvictionChannel [insert-count update-count delete-count started]
