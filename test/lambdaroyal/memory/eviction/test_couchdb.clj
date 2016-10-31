@@ -1,5 +1,5 @@
 (ns lambdaroyal.memory.eviction.test-couchdb
-  (require [midje.sweet :refer :all]
+  (:require [midje.sweet :refer :all]
            [lambdaroyal.memory.eviction.core :as evict]
            [lambdaroyal.memory.core.context :refer :all]
            [lambdaroyal.memory.core.tx :refer :all]

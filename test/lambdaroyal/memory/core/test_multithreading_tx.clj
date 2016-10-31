@@ -1,5 +1,5 @@
 (ns lambdaroyal.memory.core.test-multithreading-tx
-  (require [midje.sweet :refer :all]
+  (:require [midje.sweet :refer :all]
            [lambdaroyal.memory.core.tx :refer :all]
            [lambdaroyal.memory.core.context :refer :all]
            [lambdaroyal.memory.helper :refer :all])

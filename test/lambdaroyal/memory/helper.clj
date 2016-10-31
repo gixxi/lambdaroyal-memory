@@ -1,5 +1,5 @@
 (ns lambdaroyal.memory.helper
-  (require [clojure.tools.logging :as log])
+  (:require [clojure.tools.logging :as log])
   (:gen-class))
 
 (def log-count (atom 0))

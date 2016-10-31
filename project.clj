@@ -3,7 +3,7 @@
   :url "https://github.com/gixxi/lambdaroyal-memory"
   :license {:name "FreeBSD License"
             :url "http://www.freebsd.org/copyright/freebsd-license.html"}
-  :dependencies [[org.clojure/clojure "1.8.0-RC4"]
+  :dependencies [[org.clojure/clojure "1.8.0"]
                  [org.clojure/tools.cli "0.3.3"]
                  [org.clojure/core.async "0.2.374"]
                  [clj-http "2.0.0"]

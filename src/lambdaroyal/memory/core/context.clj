@@ -1,7 +1,7 @@
 (ns lambdaroyal.memory.core.context
-  (require [lambdaroyal.memory.core.tx :refer :all])
-  (require [lambdaroyal.memory.eviction.core :refer [create-proxy]])
-  (import [lambdaroyal.memory.core.tx ReferrerIntegrityConstraint ReferencedIntegrityConstraint AttributeIndex])
+  (:require [lambdaroyal.memory.core.tx :refer :all]
+            [lambdaroyal.memory.eviction.core :refer [create-proxy]])
+  (:import [lambdaroyal.memory.core.tx ReferrerIntegrityConstraint ReferencedIntegrityConstraint AttributeIndex])
   (:refer-clojure :exclude [find])
   (:gen-class))
 
