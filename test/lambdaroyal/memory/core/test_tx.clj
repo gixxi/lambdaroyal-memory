@@ -4,7 +4,7 @@
            [lambdaroyal.memory.core.context :refer :all]
            [lambdaroyal.memory.core.test-context :refer [meta-model meta-model-with-indexes meta-model-with-ric]]
            [lambdaroyal.memory.helper :refer :all])
-  (import [lambdaroyal.memory.core ConstraintException]))
+  (:import [lambdaroyal.memory.core ConstraintException]))
 
 (facts "check core multimethods find-first/contains-key?"
   (let [ctx (create-context meta-model)

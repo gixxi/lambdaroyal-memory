@@ -6,7 +6,7 @@
            [lambdaroyal.memory.eviction.couchdb :as evict-couchdb]
            [lambdaroyal.memory.helper :refer :all]
            [com.ashafa.clutch :as clutch])
-  (import [lambdaroyal.memory.core ConstraintException]
+  (:import [lambdaroyal.memory.core ConstraintException]
           [org.apache.log4j BasicConfigurator]))
 
 (BasicConfigurator/configure)

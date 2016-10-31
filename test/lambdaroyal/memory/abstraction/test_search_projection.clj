@@ -8,7 +8,7 @@
             [lambdaroyal.memory.core.context :refer :all]
             [lambdaroyal.memory.helper :refer :all]
             [clojure.core.async :refer [>! alts!! timeout chan go]])
-  (import [java.text SimpleDateFormat]))
+  (:import [java.text SimpleDateFormat]))
 
 (defn append-to-timeseries [name & values]
   (if (not= "false" (System/getenv "lambdaroyal.memory.traceteststats.disable"))

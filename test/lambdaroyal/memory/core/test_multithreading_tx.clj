@@ -3,7 +3,7 @@
            [lambdaroyal.memory.core.tx :refer :all]
            [lambdaroyal.memory.core.context :refer :all]
            [lambdaroyal.memory.helper :refer :all])
-  (import [lambdaroyal.memory.core ConstraintException]))
+  (:import [lambdaroyal.memory.core ConstraintException]))
 
 (def ^:const colls 10)
 

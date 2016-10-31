@@ -1,7 +1,7 @@
 (ns lambdaroyal.memory.abstraction.search
   (:require [clojure.core.async :refer [>! <! alts! timeout chan go]]
             [lambdaroyal.memory.core.tx :as tx])
-  (import [lambdaroyal.memory.core.tx Index ReferrerIntegrityConstraint]))
+  (:import [lambdaroyal.memory.core.tx Index ReferrerIntegrityConstraint]))
 
 ;; --------------------------------------------------------------------
 ;; TYPE ABSTRACTIONS

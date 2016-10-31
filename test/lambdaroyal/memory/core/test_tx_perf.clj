@@ -8,7 +8,7 @@
             [lambdaroyal.memory.core.context :refer :all]
             [lambdaroyal.memory.helper :refer :all]
             [clojure.core.async :refer [>! alts!! timeout chan go]])
-  (import [java.text SimpleDateFormat]))
+  (:import [java.text SimpleDateFormat]))
 
 ;;we try to be idempotent, so we don't use mutable models from other workspaces here
 

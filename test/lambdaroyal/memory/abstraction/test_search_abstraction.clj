@@ -5,7 +5,7 @@
            [lambdaroyal.memory.helper :refer :all]
            [lambdaroyal.memory.abstraction.search :refer :all]
            [clojure.test :refer :all])
-  (import [lambdaroyal.memory.core ConstraintException]))
+  (:import [lambdaroyal.memory.core ConstraintException]))
 
 
 (def meta-model
