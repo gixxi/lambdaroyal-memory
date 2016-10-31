@@ -1,9 +1,9 @@
-(defproject org.clojars.gixxi/lambdaroyal-memory "0.8.0-SNAPSHOT"
+(defproject org.clojars.gixxi/lambdaroyal-memory "0.8.1-SNAPSHOT"
   :description "STM-based in-memory database storing persistent data structures"
   :url "https://github.com/gixxi/lambdaroyal-memory"
   :license {:name "FreeBSD License"
             :url "http://www.freebsd.org/copyright/freebsd-license.html"}
-  :dependencies [[org.clojure/clojure "1.8.0"]
+  :dependencies [[org.clojure/clojure "1.9.0-alpha14"]
                  [org.clojure/tools.cli "0.3.3"]
                  [org.clojure/core.async "0.2.374"]
                  [clj-http "2.0.0"]
@@ -18,6 +18,6 @@
                              javax.jms/jms
                              com.sun.jdmk/jmxtools
                              com.sun.jmx/jmxri]]]
-  :profiles {:dev {:dependencies [[midje "1.6.3"]]
+  :profiles {:dev {:dependencies [[midje "1.9.0-alpha6"]]
                    :plugins [[lein-midje "3.1.3"]]}}
   :aot [lambdaroyal.memory.core lambdaroyal.memory.eviction.core lambdaroyal.memory.helper])
