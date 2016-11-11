@@ -1,7 +1,10 @@
 (ns ^{:doc "an eviction channel listenes for successful database inserts/updates and deletes and performs some kind of I/O to them. For instance a concrete implementation could write all successful changes to the in-memory database to a external database to create a persistent version that can be imported during application ramp-up. Eviction channels can be configured to follow certain timing constraints like immediate post transaction eviction or cron like eviction, that is forwarding all the changes every x seconds. Invariants are: (1) Eviction is asynchronous to to the actual transaction, (2) Eviction might fail but to not cause the transaction to fail."} 
   lambdaroyal.memory.eviction.core
+  (:require [clojure.tools.logging :as log])
   (:refer-clojure :exclude [update])
   (:gen-class))
+
+(def verbose' (atom false))
 
 (defprotocol EvictionChannel
   (start [this ctx colls] "starts the eviction channel by reading in the persistent data into the in-memory db denoted by [ctx]. This function assumes that is eviction channel instance is handling all the collection [colls]. returns a future that can be joined to wait for the database to got warmed up.")
@@ -32,6 +35,10 @@
     (if (-> this .eviction-channel .started?)
       (.delete-coll (-> this .eviction-channel) coll-name))))
 
+(defn- log-verbose [fn coll key]
+  (if (-> verbose' deref true?) 
+    (log/info fn coll key)))
+
 (defn create-proxy [eviction-channel delay]
   (let [proxy
         (EvictionChannelProxy. 
@@ -42,19 +49,26 @@
          eviction-channel)
         consumer
         (future
-          (do
-            (while (or 
-                    (-> proxy stopped? not)
-                    (not (.isEmpty (.queue proxy))))
-              (if-let [i (.poll (.queue proxy))]
+          (while (or 
+                  (-> proxy stopped? not)
+                  (not (.isEmpty (.queue proxy))))
+            (if-let [i (.poll (.queue proxy))]
+              (try
                 (let [[fn & args] i]
-                  (cond (= :insert fn)
-                        (apply insert args)
-                        (= :update fn)
-                        (apply update args)
-                        (= :delete fn)
-                        (apply delete args)))
-                (Thread/sleep (or delay 100))))))]
+                  (do
+                    (let [[_ coll key & _2] args]
+                      (log-verbose fn coll key))
+                    (cond (= :insert fn)
+                          (let [[channel coll key value] args]
+                            (.insert channel coll key value))
+                          (= :update fn)
+                          (let [[channel coll key old new] args]
+                            (.update channel coll key old new))
+                          (= :delete fn)
+                          (let [[channel coll key] args]
+                            (.delete channel coll key)))))
+                (catch Exception e (log/fatal "failed to dispatch " i " to evitor channel" e)))
+              (Thread/sleep (or delay 100)))))]
     (assoc proxy :consumer consumer)))
 
 (defrecord SysoutEvictionChannel [this started]

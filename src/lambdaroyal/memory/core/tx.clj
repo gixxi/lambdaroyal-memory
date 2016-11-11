@@ -5,7 +5,7 @@
   (:refer-clojure :exclude [update find])
   (:gen-class))
 
-(def ^:const debug (atom false))
+(def ^:const debug (atom true))
 
 (defn create-tx 
   "creates a transaction upon user-scope function like select, insert, alter-document, delete can be executed. Iff an eviction channel is assigned to a collection then this channel needs to be started otherwise a "
