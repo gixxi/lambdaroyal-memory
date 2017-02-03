@@ -159,7 +159,7 @@
       (doseq [constraint (filter #(= (.foreign-coll %) target)
                                  (filter
                                   #(instance? ReferrerIntegrityConstraint %) (map last (-> source-coll :constraints deref))))]
-        (commute (:constraints source-coll) dissoc (.name constraint)))))
+        (alter (:constraints source-coll) dissoc (.name constraint)))))
 
 (defn- delete-referenced-constraints
   "delete all referencing constraints from a collection [source] to a target collection [target]"
@@ -169,7 +169,7 @@
       (doseq [constraint (filter #(= (.referencing-coll %) source)
                                  (filter
                                   #(instance? ReferencedIntegrityConstraint %) (map last (-> target-coll :constraints deref))))]
-        (commute (:constraints target-coll) dissoc (.name constraint)))))
+        (alter (:constraints target-coll) dissoc (.name constraint)))))
 
 (defn delete-collection
   "removes a collection with name [coll]. All RICs of referencing colls will be deleted. All referencing colls are returned."
