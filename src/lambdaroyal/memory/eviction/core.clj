@@ -30,7 +30,7 @@
       (.add (.queue this) [:update eviction-channel coll-name unique-key old-user-value new-user-value])))
   (delete [this coll-name unique-key]
     (if (-> this .eviction-channel .started?)
-    (.add (.queue this) [:delete eviction-channel coll-name unique-key])))
+      (.add (.queue this) [:delete eviction-channel coll-name unique-key])))
   (delete-coll [this coll-name]
     (if (-> this .eviction-channel .started?)
       (.delete-coll (-> this .eviction-channel) coll-name))))

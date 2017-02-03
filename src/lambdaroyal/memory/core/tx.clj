@@ -36,14 +36,26 @@
   [coll]
   (fn [watch ref old new]
     (if-let [evictor (-> coll :evictor)]
-      (let [_ (comment (println :evict :ref ref :meta (meta ref) :old old :new new))
+      (let [started (.started? evictor)
+            ;; _ (println :evict :started started :ref ref :meta (meta ref) :old old :new new)
             coll-name (-> ref meta :coll-name)
             deleted (-> ref meta :deleted)
             unique-key (-> ref meta :unique-key)]
-        (cond
-         (nil? old) (evict/insert evictor coll-name unique-key new)
-         (-> ref meta :deleted) (evict/delete evictor coll-name unique-key)
-         :else (evict/update evictor coll-name unique-key old new))))))
+        (if started 
+          (do
+            (if @evict/verbose' 
+              (println :started started :coll-name coll-name :key unique-key 
+                            :fn (cond (and (nil? old) (-> ref meta :deleted)) :insert-and-delete
+                                      (-> ref meta :deleted) :delete
+                                      (nil? old) :insert
+                                      :else :update)))
+            (cond
+              ;;insert and delete -> nada
+              (and (nil? old) (-> ref meta :deleted)) nil
+              (-> ref meta :deleted) 
+              (evict/delete evictor coll-name unique-key)
+              (nil? old) (evict/insert evictor coll-name unique-key new)
+              :else (evict/update evictor coll-name unique-key old new))))))))
 
 (defn- value-wrapper
   "takes a value [user-value] to be stored into the database and returns a respective STM ref with meta-data attached used for reverse index key handling. this map denotes key/value pairs, where key is the name of a index refering the inserted user-value as well as value denotes the key within this very index"
