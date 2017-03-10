@@ -1,7 +1,7 @@
 # lambdaroyal-memory
 STM-based in-memory database storing persistent data structures
 
-[Release Notes](https://github.com/gixxi/lambdaroyal-memory/blob/master/doc/relnotes.md)
+[Release Notes](https://github.com/gixxi/lambdaroyal-memory/blob/master/relnotes.md)<br/>
 [Usage](https://github.com/gixxi/lambdaroyal-memory/blob/master/doc/usage.md)
 
 ## Dependencies
