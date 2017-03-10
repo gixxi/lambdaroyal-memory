@@ -1,6 +1,7 @@
 # lambdaroyal-memory
 STM-based in-memory database storing persistent data structures
 
+[Release Notes](https://github.com/gixxi/lambdaroyal-memory/blob/master/doc/relnotes.md)
 [Usage](https://github.com/gixxi/lambdaroyal-memory/blob/master/doc/usage.md)
 
 ## Dependencies
@@ -8,12 +9,12 @@ STM-based in-memory database storing persistent data structures
 Leiningen
 
 ```clojure
-[org.clojars.gixxi/lambdaroyal-memory "0.8.3"]
+[org.clojars.gixxi/lambdaroyal-memory "0.9"]
 ```
 
 Gradle
 ```
-compile "org.clojars.gixxi:lambdaroyal-memory:0.8.3"
+compile "org.clojars.gixxi:lambdaroyal-memory:0.9"
 ```
 
 Maven
@@ -22,7 +23,7 @@ Maven
 <dependency>
   <groupId>org.clojars.gixxi</groupId>
   <artifactId>lambdaroyal-memory</artifactId>
-  <version>0.8.3</version>
+  <version>0.9</version>
 </dependency>
 ```
 
