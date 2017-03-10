@@ -13,17 +13,11 @@
   (stop [this] nil)
   (stopped? [this] nil)
   (insert [this coll-name unique-key user-value]
-    (do
-      (println :insert)
-      (swap! insert-count inc)))
+    (swap! insert-count inc))
   (update [this coll-name unique-key old-user-value new-user-value]
-    (do
-      (println :update)
-      (swap! update-count inc)))
+    (swap! update-count inc))
   (delete [this coll-name unique-key old-user-value]
-    (do
-      (println :delete)
-      (swap! delete-count inc)))
+    (swap! delete-count inc))
   (delete-coll [this coll-name] nil))
 
 (def insert-count (atom 0))
@@ -42,6 +36,7 @@
           tx (create-tx ctx)]
       (try
         (do
+          (reset! evict/verbose' true)
           (fact "start a zero counter" @insert-count => 0)
           (fact "start a zero counter" @update-count => 0)
           (fact "start a zero counter" @delete-count => 0)

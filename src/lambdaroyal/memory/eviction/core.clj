@@ -30,14 +30,14 @@
       (.add (.queue this) [:update eviction-channel coll-name unique-key old-user-value new-user-value])))
   (delete [this coll-name unique-key old-user-value]
     (if (-> this .eviction-channel .started?)
-      (.add (.queue this) [:delete eviction-channel coll-name unique-key])))
+      (.add (.queue this) [:delete eviction-channel coll-name unique-key old-user-value])))
   (delete-coll [this coll-name]
     (if (-> this .eviction-channel .started?)
       (.delete-coll (-> this .eviction-channel) coll-name))))
 
 (defn- log-verbose [fn coll key]
   (if (-> verbose' deref true?) 
-    (log/info fn coll key)))
+    (log/info :fn fn :coll coll :key key)))
 
 (defn create-proxy [eviction-channel delay]
   (let [proxy

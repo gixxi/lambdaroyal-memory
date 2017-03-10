@@ -37,7 +37,6 @@
   (fn [watch ref old new]
     (if-let [evictor (-> coll :evictor)]
       (let [started (.started? evictor)
-            ;; _ (println :evict :started started :ref ref :meta (meta ref) :old old :new new)
             coll-name (-> ref meta :coll-name)
             deleted (-> ref meta :deleted)
             unique-key (-> ref meta :unique-key)]
@@ -48,7 +47,8 @@
                             :fn (cond (and (nil? old) (-> ref meta :deleted)) :insert-and-delete
                                       (-> ref meta :deleted) :delete
                                       (nil? old) :insert
-                                      :else :update)))
+                                      :else :update)
+                            :old old :new new))
             (cond
               ;;insert and delete -> nada
               (and (nil? old) (-> ref meta :deleted)) nil
