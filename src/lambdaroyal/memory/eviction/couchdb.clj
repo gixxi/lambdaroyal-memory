@@ -13,6 +13,8 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
            [clojure.set :refer [union]])
   (:import [java.net ConnectException]))
 
+(def stop-on-fatal (atom false))
+
 (defn- check-couchdb-connection [url]
   (let [_ (log/info (format "try to access couchdb server using url %s" url))
         e (format "Cannot access Couch DB server on %s. Did you start it (probably by sudo /usr/local/etc/init.d/couchdb start" url)]
@@ -57,7 +59,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
           (try
             (put doc)
             (catch Exception e
-              (log/fatal (format "failed to put document %s to couchdb during retry. stop eviction channel." doc))
+              (log/fatal (format "failed to put document %s to couchdb during retry. " doc))
               (.stop channel))))))))
 
 (defn- delete-document 
@@ -69,8 +71,8 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
         (clutch/delete-document (get-database channel coll-name) existing)
         (swap! (.revs channel) dissoc [coll-name unique-key]))
       (catch Exception e
-        (log/fatal (format "failed to delete document %s from couchdb. stop eviction channel." existing))
-        (.stop channel)))))
+        (log/fatal (format "failed to delete document %s from couchdb. " existing))
+        (if @stop-on-fatal (.stop channel))))))
 
 (defn- delete-coll
   "deletes a document db from the couchdb"
@@ -80,8 +82,8 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
       (clutch/delete-database
        (get-database channel coll-name)))
     (catch Exception e
-      (log/fatal (format "failed to delete db %s from couchdb. stop eviction channel." coll-name))
-      (.stop channel))))
+      (log/fatal (format "failed to delete db %s from couchdb. " coll-name))
+      (if @stop-on-fatal (.stop channel)))))
 
 (defrecord CouchEvictionChannel [url prefix revs ^clojure.lang.Atom started]
   evict/EvictionChannel
@@ -119,7 +121,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
   (update [this coll-name unique-key old-user-value new-user-value]
     (if @(.started this)
       (put-document this coll-name unique-key new-user-value)))
-  (delete [this coll-name unique-key]
+  (delete [this coll-name unique-key old-user-value]
     (if @(.started this) (delete-document this coll-name unique-key)))
   (delete-coll [this coll-name]
     (if @(.started this) (delete-coll this coll-name))))
