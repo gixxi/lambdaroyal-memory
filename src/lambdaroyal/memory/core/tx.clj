@@ -53,7 +53,7 @@
               ;;insert and delete -> nada
               (and (nil? old) (-> ref meta :deleted)) nil
               (-> ref meta :deleted) 
-              (evict/delete evictor coll-name unique-key)
+              (evict/delete evictor coll-name unique-key old)
               (nil? old) (evict/insert evictor coll-name unique-key new)
               :else (evict/update evictor coll-name unique-key old new))))))))
 

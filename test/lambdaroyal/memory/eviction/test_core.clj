@@ -20,7 +20,7 @@
     (do
       (println :update)
       (swap! update-count inc)))
-  (delete [this coll-name unique-key]
+  (delete [this coll-name unique-key old-user-value]
     (do
       (println :delete)
       (swap! delete-count inc)))
