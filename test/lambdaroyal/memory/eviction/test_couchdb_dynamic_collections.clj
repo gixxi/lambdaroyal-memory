@@ -52,3 +52,37 @@
       (finally
         (.stop (-> @ctx :order :evictor)))))))
 
+(facts "add attribute indexes dynamically and check whether they are usable "
+  (let [evictor (evict-couchdb/create)
+        meta-model {:order {:unique true :indexes [] :evictor evictor :evictor-delay 1000}}
+        ctx (create-context meta-model)
+        _ (clutch/delete-database (evict-couchdb/get-database-url (-> @ctx :order :evictor :url) (name :order)))
+          ;; delete the couchdb collection that will be added right after from previous attempts
+        _ (clutch/delete-database (evict-couchdb/get-database-url (-> @ctx :order :evictor :url) (name :person)))
+        ;; insert a collection dynamically
+        _ (add-collection ctx  {:name :person :evictor (-> @ctx :order :evictor) :evictor-delay 1000})
+        _ (start-coll ctx :person)
+        _ (start-coll ctx :order)
+        tx (create-tx ctx)]
+    (try
+      (dosync
+       (insert tx :person 0 {:type :gaga :receiver :foo :indexed1 "foo" :indexed2 "foo"})
+       (insert tx :person 1 {:type :gaga :receiver :foo :indexed1 "foo2" :indexed2 "foo"})
+       (insert tx :person 2 {:type :gaga :receiver :foo :indexed1 "foo3" :indexed2 "foo4"}))
+      (fact "there must not be any applicable index before adding it"
+            (applicable-indexes (get (-> tx :context deref) :person) [:indexed1]) => empty?)
+      (add-attr-index ctx :person [:indexed1])
+      (fact "there must be an applicable index after adding it"
+            (applicable-indexes (get (-> tx :context deref) :person) [:indexed1]) => (comp not empty?))
+      (fact "using the index must reveal the inserted data"
+            (filter #(= "foo2" (-> % last :indexed1)) (select tx :person [:indexed1] >= ["foo2"])) => (comp not empty?))
+      (remove-attr-index ctx :person [:indexed1])
+      (fact "there must not be any applicable index after removing it"
+            (applicable-indexes (get (-> tx :context deref) :person) [:indexed1]) => (comp empty?))
+      (fact "using the index must reveal the inserted data"
+            (select tx :person [:indexed1] >= ["foo2"]) => (throws ConstraintException))
+      (finally
+        (.stop (-> @ctx :order :evictor))
+        (-> @ctx :order :evictor :consumer deref)))))
+
+
