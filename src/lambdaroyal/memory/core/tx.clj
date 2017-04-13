@@ -192,6 +192,11 @@
             (filter
              #(satisfies? Index %) (map last (-> coll :constraints deref))))))
 
+(defn applicable-indexes'
+  "checks whether collection :coll within the context of a transaction :tx provides an applicable attribute index for the attribute seq :key"
+  [tx coll key]
+  (applicable-indexes (get (-> tx :context deref) coll) key))
+
 (defn select-from-coll 
   ([coll attributes start-test start-key stop-test stop-key]
    (let [indexes (applicable-indexes coll attributes)]

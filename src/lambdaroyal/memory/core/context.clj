@@ -19,6 +19,34 @@
       ;;add reverse constraint - RIC on the parent/referenced collection
       [(.foreign-coll constraint) (create-referenced-integrity-constraint name coll (.foreign-key constraint))])))
 
+(defn add-attr-index
+  "add an attribute index for attributes :attributes dynamically to a context [ctx] on behalf of collection :coll"
+  [ctx coll attributes]
+  (dosync
+   (let [x [coll (create-attribute-index (gensym) false attributes)]]
+     (let [[coll-name constraint] x
+           ctx @ctx
+           constraints (-> ctx coll-name :constraints)]
+       (commute constraints assoc (.name constraint) constraint)
+       ;;update and check indexes
+       (if (contains? (.application constraint) :insert)
+         (doseq [x (-> ctx coll-name :data deref)]
+           (let [[k v] x]
+             (.precommit constraint ctx coll-name :insert k v)
+             (.postcommit constraint ctx coll-name :insert x))))))))
+
+(defn remove-attr-index
+  "removes all referential integrity constraints from the context [ctx] that refer the target collection [target] from the source collection [source]. The [foreign-key] within the source collection all the respective RICs need to match"
+  [ctx coll attributes]
+   (let [ctx @ctx
+         source-coll (get ctx coll)] 
+     (dosync
+      ;;delete index backing the ric
+      (doseq [constraint (filter #(= (.attributes %) attributes)
+                                 (filter
+                                  #(instance? AttributeIndex %) (map last (-> source-coll :constraints deref))))]
+        (commute (:constraints source-coll) dissoc (.name constraint))))))
+
 (defn add-ric 
   "add a referential integrity constraint dynamically to a context [ctx]"
   [ctx ric]
