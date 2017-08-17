@@ -102,7 +102,9 @@
 
 (defn contains-key? "returns true iff the collection [coll] contains a tuple whose key is equal to the user key [key]."
   [coll key]
-  (contains? (-> coll :data deref) key))
+  (try 
+    (contains? (-> coll :data deref) key)
+    (catch Exception e (throw (ex-info "PERSISTENT BACKEND CORRUPTION. Failure checking data for key" {:data (-> coll :data deref) :key key :coll (:name coll)} e)))))
 
 (defprotocol Constraint
   (precommit [this ctx coll application key value] "This function gets called before a key/value pair is inserted to/updated within a collection. Implementing this function if a necessary precondition needs to be checked before performing an costly update to the underlying datastructure holding the key/value pair. Implementations should raise. Here ctx aims to handle constraint to need to check on other collections as well")
