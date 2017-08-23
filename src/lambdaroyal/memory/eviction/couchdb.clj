@@ -94,7 +94,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
                     (dependency-model-ordered colls)
                     colls)]
         (do
-          (log/info (format "collection order %s" (map :name colls)))
+          (log/info (format "collection order %s" (doall (map :name colls))))
           (log-info-timed 
            "read-in collections"
            (doall 
