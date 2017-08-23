@@ -94,8 +94,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
                     (dependency-model-ordered colls)
                     colls)]
         (do
-          (doseq [r colls]
-            (log/debug (format "read-in collection %s" (:name r))))
+          (log/info (format "collection order %s" (map :name r)))
           (log-info-timed 
            "read-in collections"
            (doall 
@@ -104,6 +103,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
                     docs (clutch/all-documents db)
                     tx (create-tx ctx :force true)]
                 (do
+                  (log/info "read-in collection %s" (:name %))
                   (doseq [doc docs]
                     (let [{:keys [id]} doc
                           existing (clutch/get-document (get-database this (:name %)) id) 
