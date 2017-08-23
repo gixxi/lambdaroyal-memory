@@ -330,16 +330,23 @@
         constraints (map last (-> coll :constraints deref))
         idxs (filter
               #(satisfies? Index %) constraints)
-        rics (filter
-              #(instance? ReferrerIntegrityConstraint %) constraints)
+        constraints (filter 
+                     #(contains? (.application %) :update)
+                     (filter
+                      #(or 
+                        (not (satisfies? Index %))
+                        (instance? ReferrerIntegrityConstraint %)) constraints))
         new-user-value (apply alter (last coll-tuple) fn args)]
     (do
-      ;;check all referential integrity constraints on the referrer site of the coin
-      (doseq [_ rics]
+      ;;check all relevant constraints on the referrer site of the coin
+      (doseq [_ constraints]
         (.precommit _ ctx coll :update (first user-scope-tuple) new-user-value))
       ;;alter all indexes to consider the document change
       (doseq [idx idxs]
         (alter-index idx coll-tuple old-user-value new-user-value))
+      ;;check all relevant constraints on the referrer site of the coin
+      (doseq [_ constraints]
+        (.postcommit _ ctx coll :update (first user-scope-tuple) new-user-value))
       new-user-value)))
 
 (defn delete 
