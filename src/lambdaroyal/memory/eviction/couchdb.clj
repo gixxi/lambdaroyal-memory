@@ -92,25 +92,23 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
       ;;order them by referential integrity constraints
       (let [colls (if (> (count colls) 1) 
                     (dependency-model-ordered colls)
-                    colls)]
+                    (map :name colls))]
         (do
-          (log/info (format "collection order %s" (apply str (interpose " -> " (map :name colls)))))
+          (log/info (format "collection order %s" (apply str (interpose " -> " colls))))
           (log-info-timed 
            "read-in collections"
            (doall 
             (map
-             #(let [db (get-database this (:name %))
+             #(let [db (get-database this %)
                     docs (clutch/all-documents db)
                     tx (create-tx ctx :force true)]
-                (do
-                  (log/info "read-in collection %s" (:name %))
-                  (doseq [doc docs]
-                    (let [{:keys [id]} doc
-                          existing (clutch/get-document (get-database this (:name %)) id) 
-                          user-scope-tuple (dosync
-                                            (insert tx (:name %) (-> existing :unique-key) existing))]
-                      (swap! (.revs this) assoc [(:name %) (first user-scope-tuple)] (:_rev existing))))
-                  (log/info (format "collection %s contains %d documents" (:name %) (count docs)))))
+                (doseq [doc docs]
+                  (let [{:keys [id]} doc
+                        existing (clutch/get-document (get-database this %) id) 
+                        user-scope-tuple (dosync
+                                          (insert tx % (-> existing :unique-key) existing))]
+                    (swap! (.revs this) assoc [% (first user-scope-tuple)] (:_rev existing))))
+                (log/info (format "collection %s contains %d documents" % (count docs))))
              colls)))
           (reset! (.started this) true)))))
   (started? [this] @(.started this))

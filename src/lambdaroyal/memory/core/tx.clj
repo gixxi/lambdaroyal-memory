@@ -340,13 +340,13 @@
     (do
       ;;check all relevant constraints on the referrer site of the coin
       (doseq [_ constraints]
-        (.precommit _ ctx coll :update (first user-scope-tuple) new-user-value))
+        (precommit _ ctx coll :update (first user-scope-tuple) new-user-value))
       ;;alter all indexes to consider the document change
       (doseq [idx idxs]
         (alter-index idx coll-tuple old-user-value new-user-value))
       ;;check all relevant constraints on the referrer site of the coin
       (doseq [_ constraints]
-        (.postcommit _ ctx coll :update (first user-scope-tuple) new-user-value))
+        (postcommit _ ctx coll :update coll-tuple))
       new-user-value)))
 
 (defn delete 

@@ -241,18 +241,33 @@
                      left)]
     (list left stage)))
 
-(defn dependency-model [colls]
+(defn- dependency-model 
   "returns a list of order names orderd by referential integrity constraints. input is a sequence of context collection. output is a list of collection names"
-  (let [x (map 
-           (fn [coll]
-             (list
-              (:name coll) 
-              (map #(.foreign-coll %) (filter #(instance? ReferrerIntegrityConstraint %) (-> coll :constraints deref vals))))) 
-           colls)]
-    (zipmap (map first x) (map last x))))
+  [colls]
+  (map 
+   (fn [coll]
+     (list
+      (:name coll) 
+      (set (map #(.foreign-coll %) (filter #(instance? ReferrerIntegrityConstraint %) (-> coll :constraints deref vals))))))
+   colls))
+
+(defn- partition-dependency-model 
+  "returns [xs,xs'] from a NON-EMPTY dependency model, where xs is a set of colls that have only fulfilled dependencies or no dependencies at all and xs' still have dependencies"
+  [dependency-model]
+  (let [xs (set (map first (filter #(-> % last empty?) dependency-model)))]
+    [xs (map
+         (fn [[k v]]
+           (list k (clojure.set/difference v xs)))
+         (remove (fn [[k _]] (contains? xs k)) dependency-model))]))
 
 (defn dependency-model-ordered [colls]
-  (let [names (apply concat (take-while not-empty (map last (rest (iterate dependency-order [(dependency-model colls)])))))
-        coll-by-name (zipmap (map :name colls) colls)]
-    (map #(get coll-by-name %) names)))
-
+  (let [dependency-model (dependency-model colls)]
+    (loop [[xs xs'] (partition-dependency-model dependency-model) res []]
+      (cond
+        (empty? xs') (apply conj res xs)
+        (empty? xs) (throw (IllegalStateException. 
+                            (str 
+                             "failed to derive non-dependent partition from dependency model"
+                             (apply str (interpose "," (map first dependency-model)))
+                             \newline "problem in " (into [] xs'))))
+        :else (recur (partition-dependency-model xs') (apply conj res xs))))))
