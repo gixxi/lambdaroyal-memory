@@ -7,6 +7,9 @@
 
 (def ^:const debug (atom true))
 
+;;use this contains information on the old user-value during card alterings
+(declare ^{:dynamic true} *alter-context*)
+
 (defn create-tx 
   "creates a transaction upon user-scope function like select, insert, alter-document, delete can be executed. Iff an eviction channel is assigned to a collection then this channel needs to be started otherwise a "
   [ctx & opts]
@@ -44,11 +47,11 @@
           (do
             (if @evict/verbose' 
               (println :started started :coll-name coll-name :key unique-key 
-                            :fn (cond (and (nil? old) (-> ref meta :deleted)) :insert-and-delete
-                                      (-> ref meta :deleted) :delete
-                                      (nil? old) :insert
-                                      :else :update)
-                            :old old :new new))
+                       :fn (cond (and (nil? old) (-> ref meta :deleted)) :insert-and-delete
+                                 (-> ref meta :deleted) :delete
+                                 (nil? old) :insert
+                                 :else :update)
+                       :old old :new new))
             (cond
               ;;insert and delete -> nada
               (and (nil? old) (-> ref meta :deleted)) nil
@@ -96,9 +99,9 @@
   (with-meta [key (-> coll :running deref inc)] {:unique-key true}))
 
 (defn find-first "returns the first collection tuple whose key is equal to the user key [key]. This is not a userscope method."
-    [coll key]
-    (if-let [v (get (-> coll :data deref) key)]
-      [key v]))
+  [coll key]
+  (if-let [v (get (-> coll :data deref) key)]
+    [key v]))
 
 (defn contains-key? "returns true iff the collection [coll] contains a tuple whose key is equal to the user key [key]."
   [coll key]
@@ -130,52 +133,52 @@
 (deftype
     ^{:doc"A index implementation that is defined over a set of comparable attributes. The attributes are given as per the access keys that refer to the attributes to be indexed"}
     AttributeIndex [this name unique attributes]
-    Index
-    (find [this start-test start-key stop-test stop-key]
+  Index
+  (find [this start-test start-key stop-test stop-key]
+    (let [this (.this this)
+          start-key (create-unique-key start-key)
+          stop-key (create-unique-key stop-key)
+          data (-> this :data deref)]
+      (map last (subseq (-> this :data deref) start-test start-key stop-test stop-key))))
+  (find-without-stop [this start-test start-key]
+    (let [this (.this this)
+          start-key (create-unique-key start-key)]
+      (map last (subseq (-> this :data deref) start-test start-key))))
+  (applicable? [this key]
+    (and
+     (sequential? key)
+     (>= (-> this .attributes count) (count key))
+     (not-empty (take-while true?
+                            (map (fn [[a b]] (= a b))
+                                 (map list (.attributes this) key))))))
+  (rating [this key]
+    (count attributes))
+  Constraint
+  (application [this] #{:insert :delete})
+  (precommit [this ctx coll application key value]
+    (if (= :insert application)
+      (let [user-key (attribute-values value attributes)
+            unique-key (create-unique-key (.this this) user-key)]
+        (if unique 
+          (if-let [match (first (.find-without-stop this >= user-key))]
+            (if (= user-key (attribute-values (-> match last deref) attributes))
+              (throw (create-constraint-exception coll key (format "unique index constraint violated on index %s when precommit value %s" attributes value)))))))))
+  (postcommit [this ctx coll application coll-tuple]
+    (cond
+      (= :insert application)
       (let [this (.this this)
-            start-key (create-unique-key start-key)
-            stop-key (create-unique-key stop-key)
-            data (-> this :data deref)]
-        (map last (subseq (-> this :data deref) start-test start-key stop-test stop-key))))
-    (find-without-stop [this start-test start-key]
-      (let [this (.this this)
-            start-key (create-unique-key start-key)]
-        (map last (subseq (-> this :data deref) start-test start-key))))
-    (applicable? [this key]
-      (and
-       (sequential? key)
-       (>= (-> this .attributes count) (count key))
-       (not-empty (take-while true?
-                              (map (fn [[a b]] (= a b))
-                                   (map list (.attributes this) key))))))
-    (rating [this key]
-      (count attributes))
-    Constraint
-    (application [this] #{:insert :delete})
-    (precommit [this ctx coll application key value]
-      (if (= :insert application)
-        (let [user-key (attribute-values value attributes)
-              unique-key (create-unique-key (.this this) user-key)]
-          (if unique 
-            (if-let [match (first (.find-without-stop this >= user-key))]
-              (if (= user-key (attribute-values (-> match last deref) attributes))
-                (throw (create-constraint-exception coll key (format "unique index constraint violated on index %s when precommit value %s" attributes value)))))))))
-    (postcommit [this ctx coll application coll-tuple]
-      (cond
-       (= :insert application)
-       (let [this (.this this)
-             user-value (-> coll-tuple last deref)
-             user-key (attribute-values user-value attributes)
-             unique-key (create-unique-key this user-key)]
-         (alter (-> coll-tuple last get-idx-keys) assoc name unique-key)
-         (alter (:data this) assoc unique-key coll-tuple))
-       (= :delete application)
-       (if coll-tuple
-         (let [this (.this this) 
-               idx-keys (-> coll-tuple get-idx-keys)]
-           (if-let [idx-key (get @idx-keys name)]
-             (alter (:data this) dissoc idx-key)
-             (throw (RuntimeException. (format "FATAL RUNTIME EXCEPTION: index %s is inconsistent, failed to remove key %s from value-wrapper %s. Failed to reverse lookup index key." name coll-tuple)))))))))
+            user-value (-> coll-tuple last deref)
+            user-key (attribute-values user-value attributes)
+            unique-key (create-unique-key this user-key)]
+        (alter (-> coll-tuple last get-idx-keys) assoc name unique-key)
+        (alter (:data this) assoc unique-key coll-tuple))
+      (= :delete application)
+      (if coll-tuple
+        (let [this (.this this) 
+              idx-keys (-> coll-tuple get-idx-keys)]
+          (if-let [idx-key (get @idx-keys name)]
+            (alter (:data this) dissoc idx-key)
+            (throw (RuntimeException. (format "FATAL RUNTIME EXCEPTION: index %s is inconsistent, failed to remove key %s from value-wrapper %s. Failed to reverse lookup index key." name coll-tuple)))))))))
 
 (defn create-attribute-index 
   "creates an attribute index for attributes a"
@@ -215,17 +218,17 @@
 (deftype
     ^{:doc "The child (foreign key) part of the referential integrity constraint that checks during insert and alterations of documents refering a referenced/parent document"}
     ReferrerIntegrityConstraint [this name foreign-coll foreign-key]
-    Constraint
-    (application [this] #{:insert :update})
-    (precommit [this ctx coll application key value]
-      {:pre [(contains? ctx foreign-coll)]}
-      (let [foreign-coll (get ctx foreign-coll)]
-        ;;check whether the user-value has a non-nil foreign key,
-        ;;otherwise we don't have to check at all
-        (if-let [foreign-key (get value foreign-key)]
-          (if-not (contains-key? foreign-coll foreign-key)
-            (throw (create-constraint-exception coll key (format "referrer integrity constraint violated. no document with key %s within collection %s" foreign-key (.foreign-coll this))))))))
-    (postcommit [this ctx coll application coll-tuple] nil))
+  Constraint
+  (application [this] #{:insert :update})
+  (precommit [this ctx coll application key value]
+    {:pre [(contains? ctx foreign-coll)]}
+    (let [foreign-coll (get ctx foreign-coll)]
+      ;;check whether the user-value has a non-nil foreign key,
+      ;;otherwise we don't have to check at all
+      (if-let [foreign-key (get value foreign-key)]
+        (if-not (contains-key? foreign-coll foreign-key)
+          (throw (create-constraint-exception coll key (format "referrer integrity constraint violated. no document with key %s within collection %s" foreign-key (.foreign-coll this))))))))
+  (postcommit [this ctx coll application coll-tuple] nil))
 
 (defn create-referrer-integrity-constraint 
   [name foreign-coll foreign-key]
@@ -238,17 +241,17 @@
 (deftype
     ^{:doc "The referenced/parent (primary key) part of the referential integrity constraint that checks during deleting of a documents whether it is referenced by another document"}
     ReferencedIntegrityConstraint [this name referencing-coll referencing-key]
-    Constraint
-    (application [this] #{:delete})
-    (precommit [this ctx coll application key value]
-      {:pre [(contains? ctx referencing-coll)]}
-      (let [;;select the referencee using the automatically generated index on the referencing-key
-            match (first (take-while
-                          #(= key (-> % last deref referencing-key))
-                          (select-from-coll (get ctx referencing-coll) [referencing-key] >= [key])))]
-        (if (and match (= (-> match meta :unique-key)))
-          (throw (create-constraint-exception coll key (format "referenced integrity constraint violated. a document with key %s within collection %s references this document" referencing-coll referencing-key))))))
-    (postcommit [this ctx coll application coll-tuple] nil))
+  Constraint
+  (application [this] #{:delete})
+  (precommit [this ctx coll application key value]
+    {:pre [(contains? ctx referencing-coll)]}
+    (let [;;select the referencee using the automatically generated index on the referencing-key
+          match (first (take-while
+                        #(= key (-> % last deref referencing-key))
+                        (select-from-coll (get ctx referencing-coll) [referencing-key] >= [key])))]
+      (if (and match (= (-> match meta :unique-key)))
+        (throw (create-constraint-exception coll key (format "referenced integrity constraint violated. a document with key %s within collection %s references this document" referencing-coll referencing-key))))))
+  (postcommit [this ctx coll application coll-tuple] nil))
 
 (defn create-referenced-integrity-constraint 
   [name referencing-coll referencing-key]
@@ -337,17 +340,18 @@
                         (not (satisfies? Index %))
                         (instance? ReferrerIntegrityConstraint %)) constraints))
         new-user-value (apply alter (last coll-tuple) fn args)]
-    (do
-      ;;check all relevant constraints on the referrer site of the coin
-      (doseq [_ constraints]
-        (precommit _ ctx coll :update (first user-scope-tuple) new-user-value))
-      ;;alter all indexes to consider the document change
-      (doseq [idx idxs]
-        (alter-index idx coll-tuple old-user-value new-user-value))
-      ;;check all relevant constraints on the referrer site of the coin
-      (doseq [_ constraints]
-        (postcommit _ ctx coll :update coll-tuple))
-      new-user-value)))
+    (binding [*alter-context* {:old-user-value old-user-value :new-user-value new-user-value}]
+      (do
+        ;;check all relevant constraints on the referrer site of the coin
+        (doseq [_ constraints]
+          (precommit _ ctx coll :update (first user-scope-tuple) new-user-value))
+        ;;alter all indexes to consider the document change
+        (doseq [idx idxs]
+          (alter-index idx coll-tuple old-user-value new-user-value))
+        ;;check all relevant constraints on the referrer site of the coin
+        (doseq [_ constraints]
+          (postcommit _ ctx coll :update coll-tuple))
+        new-user-value))))
 
 (defn delete 
   "deletes a document by key [key] from collection with name [coll-name] using the transaction [tx]. the transaction can be created from context using (create-tx [context]. returns number of removed items."
@@ -467,8 +471,8 @@
                             ))
                    {} rics)]
     [(first user-scope-tuple) (assoc 
-                                  (merge (last user-scope-tuple) merge-map)
-                                :coll coll-name)]))
+                               (merge (last user-scope-tuple) merge-map)
+                               :coll coll-name)]))
 
 (defn tree
   "takes a document [user-scope-tuple] from the collection with name [coll-name] and gives back derived document where all foreign keys are replaced by their respective documents."
