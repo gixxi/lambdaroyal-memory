@@ -27,6 +27,7 @@
      (let [[coll-name constraint] x
            ctx @ctx
            constraints (-> ctx coll-name :constraints)]
+       (if (contains? @constraints (.name constraint)) (throw (IllegalArgumentException. (format "Constraint with name %s already given on collection %s" (.name constraints) coll))))
        (commute constraints assoc (.name constraint) constraint)
        ;;update and check indexes
        (if (contains? (.application constraint) :insert)
@@ -55,6 +56,13 @@
      (let [[coll-name constraint] x
            ctx @ctx
            constraints (-> ctx coll-name :constraints)]
+       (if (contains? @constraints (.name constraint)) 
+         (do
+           (println :constraint constraint)
+           (println :constaints-on-collection)
+           (doseq [[k v] @constraints]
+             (println k :constraint v))
+           (throw (IllegalArgumentException. (format "Constraint with name %s already given on collection %s" (.name constraint) coll-name)))))
        (commute constraints assoc (.name constraint) constraint)
        ;;update and check indexes
        (if (contains? (.application constraint) :insert)

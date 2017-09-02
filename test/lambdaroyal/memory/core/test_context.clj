@@ -76,8 +76,7 @@
            (fact "RIC name is correct" (.name ric) => :part-order->order)
            (fact "RIC target coll is correct" (.foreign-coll ric) => :order)
            (fact "RIC key is correct" (.foreign-key ric) => :order))
-         (fact "adding a second time does not harm" 
-               (add-ric ctx {:name :part-order->order :coll :part-order :foreign-coll :order :foreign-key :order}) => nil)
+
          (comment (fact "check RICs after add-ric"
                         (map (fn [x] {:from (.referencing-coll x) :via (.referencing-key x) :name (.name x)}) 
                              (filter
