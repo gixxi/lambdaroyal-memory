@@ -1,9 +1,29 @@
 (ns lambdaroyal.memory.core.context
   (:require [lambdaroyal.memory.core.tx :refer :all]
-            [lambdaroyal.memory.eviction.core :refer [create-proxy]])
+            [lambdaroyal.memory.eviction.core :refer [create-proxy]]
+            [clojure.spec :as spec])
   (:import [lambdaroyal.memory.core.tx ReferrerIntegrityConstraint ReferencedIntegrityConstraint AttributeIndex])
   (:refer-clojure :exclude [find])
   (:gen-class))
+
+(spec/def ::referencing-coll keyword?)
+(spec/def ::referencing-key keyword?)
+(spec/def ::symbol #(instance? clojure.lang.Symbol %))
+(spec/def ::name (spec/or :string string? :keyword keyword? :symbol ::symbol))
+(spec/def ::referenced-constraint-name (spec/and map? (spec/keys :req-un [::referencing-coll ::referencing-key ::name])))
+(spec/def ::referrer-constraint-name (spec/and map? (spec/keys :req-un [::foreign-coll ::foreing-key ::name])))
+
+(defn referenced-constraint-name [referencing-coll referencing-key x]
+  (cond
+    (spec/valid? ::referenced-constraint-name x) x
+    (spec/valid? ::name x) {:referencing-coll referencing-coll :referencing-key referencing-key :name x}
+    :else (throw (IllegalArgumentException. (str "Cannot build referenced constraint name from " x)))))
+
+(defn referrer-constraint-name [foreign-coll foreign-key x]
+  (cond
+    (spec/valid? ::referrer-constraint-name x) x
+    (spec/valid? ::name x) {:foreign-coll foreign-coll :foreign-key foreign-key :name x}
+    :else (throw (IllegalArgumentException. (str "Cannot build referrer constraint name from " x)))))
 
 (defn- ric-factory 
   "use this function to create a set of indexes for a single referential integrity constraint [ric]. This function might be used in order to dynamically enrich a meta modell by a new ric. the ric (map) might contain :name :coll :foreign-coll :foreign-key :name"
@@ -11,13 +31,13 @@
   (let [{:keys [coll name foreign-coll foreign-key unique]} ric
         unique (or unique false)
         name (or name (gensym))
-        constraint (create-referrer-integrity-constraint name foreign-coll foreign-key)]
+        constraint (create-referrer-integrity-constraint (referrer-constraint-name foreign-coll foreign-key name) foreign-coll foreign-key)]
     (list  
       [coll constraint]
       ;;add additional index that backs looking up referrers during deleting parent documents 
       [coll (create-attribute-index (gensym) unique [(.foreign-key constraint)])]
       ;;add reverse constraint - RIC on the parent/referenced collection
-      [(.foreign-coll constraint) (create-referenced-integrity-constraint name coll (.foreign-key constraint))])))
+      [(.foreign-coll constraint) (create-referenced-integrity-constraint (referenced-constraint-name coll (.foreign-key constraint) name) coll (.foreign-key constraint))])))
 
 (defn add-attr-index
   "add an attribute index for attributes :attributes dynamically to a context [ctx] on behalf of collection :coll"
@@ -100,14 +120,14 @@
 
 (defn referential-integrity-constraint-factory [meta-model]
   (reduce
-   (fn [acc [coll unique constraint]]
+   (fn [acc [coll name unique constraint]]
      (conj 
       acc 
       [coll constraint]
       ;;add additional index that backs looking up referrers during deleting parent documents 
       [coll (create-attribute-index (gensym) unique [(.foreign-key constraint)])]
       ;;add reverse constraint - RIC on the parent/referenced collection
-      [(.foreign-coll constraint) (create-referenced-integrity-constraint (.name constraint) coll (.foreign-key constraint))]))
+      [(.foreign-coll constraint) (create-referenced-integrity-constraint (referenced-constraint-name coll (.foreign-key constraint) name) coll (.foreign-key constraint))]))
    []
    (map
     (fn [constraint]
@@ -115,8 +135,9 @@
             name (or name (gensym))
             unique (or unique false)]
         [coll
+         name
          unique
-         (create-referrer-integrity-constraint name foreign-coll foreign-key)]))
+         (create-referrer-integrity-constraint (referrer-constraint-name foreign-coll foreign-key name) foreign-coll foreign-key)]))
     (reduce (fn [acc [k v]]
               (concat acc (map #(assoc % :coll k) v))) []
               (zipmap (keys meta-model) (map :foreign-key-constraints (vals meta-model)))))))

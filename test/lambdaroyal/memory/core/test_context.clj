@@ -52,17 +52,20 @@
        (let [rics (map (fn [[coll constraint]] [coll constraint]) (referential-integrity-constraint-factory meta-model-with-ric))
              ctx (create-context meta-model-with-ric)]
          (fact "creating a context from a meta-model" ctx -> truthy)
-         (let [ric (-> @ctx :part-order :constraints deref :order)]
+         (let [constraint-name (referrer-constraint-name :order :order :order)
+               ric (get (-> @ctx :part-order :constraints deref) constraint-name)]
            (fact "RIC reveals" ric => truthy)
-           (fact "RIC name is correct" (.name ric) => :order)
+           (fact "RIC name is correct" (.name ric) => constraint-name)
            (fact "RIC target coll is correct" (.foreign-coll ric) => :order)
            (fact "RIC key is correct" (.foreign-key ric) => :order))
-         (let [ric (-> @ctx :part-order :constraints deref :type)]
+         (let [constraint-name (referrer-constraint-name :type :type :type)
+               ric (get (-> @ctx :part-order :constraints deref) constraint-name)]
            (fact "RIC reveals" ric => truthy)
-           (fact "RIC name is correct" (.name ric) => :type)
+           (fact "RIC name is correct" (.name ric) => constraint-name)
            (fact "RIC target coll is correct" (.foreign-coll ric) => :type)
            (fact "RIC key is correct" (.foreign-key ric) => :type))
-         (let [ric (-> @ctx :order :constraints deref :order)]
+         (let [constraint-name (referenced-constraint-name :part-order :order :order)
+               ric (get (-> @ctx :order :constraints deref) constraint-name)]
            (fact "RIC as referenced integrity constraint is given on the referenced column" (type ric) => lambdaroyal.memory.core.tx.ReferencedIntegrityConstraint)
            (fact "Referenced Integrity Constraint is pointing to the proper source collection" (.referencing-coll ric) => :part-order)
            (fact "Referenced Integrity Constraint is pointing to the proper" (.referencing-key ric) => :order))))
@@ -71,9 +74,10 @@
        (let [ctx (create-context meta-model)]
          (add-ric ctx {:name :part-order->order :coll :part-order :foreign-coll :order :foreign-key :order})
          (add-ric ctx {:name :part-order->order#2 :coll :part-order :foreign-coll :order :foreign-key :order2})
-         (let [ric (-> @ctx :part-order :constraints deref :part-order->order)]
+         (let [constraint-name (referrer-constraint-name :order :order :part-order->order)
+               ric (get (-> @ctx :part-order :constraints deref) constraint-name)]
            (fact "RIC reveals" ric => truthy)
-           (fact "RIC name is correct" (.name ric) => :part-order->order)
+           (fact "RIC name is correct" (.name ric) => constraint-name)
            (fact "RIC target coll is correct" (.foreign-coll ric) => :order)
            (fact "RIC key is correct" (.foreign-key ric) => :order))
 
@@ -111,7 +115,9 @@
                                                                                     (filter
                                                                                      #(instance? ReferencedIntegrityConstraint %) (map last (-> @ctx :order :constraints deref))))) => false)
          (fact "all other dynamically added rics must still be present"
-               (-> @ctx :part-order :constraints deref :part-order->order#2) => truthy)))
+               (get (-> @ctx :part-order :constraints deref)
+                    (referrer-constraint-name :order :order2 :part-order->order#2)
+                    ) => truthy)))
 
 
 (facts "testing the y-combinator to used build the dependency model"
