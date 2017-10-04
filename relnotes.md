@@ -1,3 +1,7 @@
+# ver 0.9.15 - 2017-10-04
+
+Auto-compaction for CouchDB evictor. Just call _lambdaroyal.memory.eviction.couchdb/schedule-compaction_ with parameters _eviction-channel and _context_, this starts the eviction right away and recurs this everyday midnight
+
 # ver0.9.2 - 2017-04-14
 
 Adding attribute indexes dynamically at runtime. Refer to *context* namespace

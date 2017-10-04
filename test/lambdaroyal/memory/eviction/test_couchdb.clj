@@ -332,9 +332,12 @@
         ctx (create-context meta-model)
         _ @(.start (-> @ctx :order :evictor) ctx [(:order @ctx)])
         tx (create-tx ctx)
-        _ (println :queue (-> @ctx :order :evictor .queue .size))]
+        _ (println :queue (-> @ctx :order :evictor .queue .size))
+        _ (evict-couchdb/schedule-compaction evictor ctx)]
     (try
       (fact "evictor must not reveal the document that was updated and removed within the same tx"
             (select-first tx :order 0) => falsey)
       (finally
-        (.stop (-> @ctx :order :evictor))))))
+        (do
+        (Thread/sleep 5000)
+        (.stop (-> @ctx :order :evictor)))))))
