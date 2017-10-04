@@ -1,16 +1,18 @@
 (ns ^{:doc "An Eviction Channel that uses a Couch DB server to load persistent data and to backup all transaction to. The couch db server
 is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcouchdb.url or individually configured per eviction channel instance"} 
-  lambdaroyal.memory.eviction.couchdb
+    lambdaroyal.memory.eviction.couchdb
   (:require [lambdaroyal.memory.eviction.core :as evict]
-           [lambdaroyal.memory.core.context :refer :all]
-           [lambdaroyal.memory.core.tx :refer :all]
-           [lambdaroyal.memory.helper :refer :all]
-           [com.ashafa.clutch :as clutch]
-           [com.ashafa.clutch.utils :as utils]
-           [clojure.string :as str]
-           [clojure.java.io :as io]
-           [clojure.tools.logging :as log]
-           [clojure.set :refer [union]])
+            [lambdaroyal.memory.core.context :refer :all]
+            [lambdaroyal.memory.core.tx :refer :all]
+            [lambdaroyal.memory.helper :refer :all]
+            [com.ashafa.clutch :as clutch]
+            [com.ashafa.clutch.utils :as utils]
+            [clojure.string :as str]
+            [clojure.java.io :as io]
+            [clojure.tools.logging :as log]
+            [com.ashafa.clutch [utils :as utils]]
+            [clojure.set :refer [union]])
+  (:use com.ashafa.clutch.http-client)
   (:import [java.net ConnectException]))
 
 (def stop-on-fatal (atom false))
@@ -27,6 +29,11 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
 
 (defn get-database-url [url db-name]
   (utils/url (utils/url url) db-name))
+
+(defn get-database-url-by-channel [channel coll-name]
+  (let [db-name (if (keyword? coll-name) (name coll-name) name)
+        db-name (if (.prefix channel) (str (.prefix channel) "_" db-name) db-name)]
+    (get-database-url (.url channel) db-name)))
 
 (defn- get-database [channel coll-name]
   (let [db-name (if (keyword? coll-name) (name coll-name) name)
@@ -132,7 +139,34 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
         _ (check-couchdb-connection url)]
     (CouchEvictionChannel. url prefix (atom {}) (atom false))))
 
-
+(defn schedule-compaction [eviction-channel ctx]
+  (let [next-midnight (fn []
+                        (let [next-midnight (.plusDays (.atStartOfDay (java.time.LocalDate/now)) 1)
+                              instant (.toInstant (.atZone next-midnight (java.time.ZoneId/systemDefault)))]
+                          (java.util.Date/from instant)))
+        compaction-fn (fn [coll]
+                        (let [coll-name (:name coll)
+                              url (str (get-database-url-by-channel eviction-channel coll-name) "/_compact")
+                              url' (utils/url (get-database eviction-channel coll-name))]
+                          (log-info-timed
+                           (format "compact collection %s url %s" coll-name url)
+                           (couchdb-request :post url' :data {}))))]
+    (future
+      (loop [next (System/currentTimeMillis)]
+        (if (.started? eviction-channel)
+          (do
+            (Thread/sleep 1000)
+            (recur
+             (if (<= next (System/currentTimeMillis))
+               (do
+                 (try
+                   (doseq [coll (vals @ctx)]
+                     (compaction-fn coll))
+                   (catch Throwable t (log/error t)))
+                 (let [next (next-midnight)
+                       _ (log/info (format "schedule next compaction for %s" next))]
+                   (.getTime next)))
+               next))))))))
 
 
 
