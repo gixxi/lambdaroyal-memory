@@ -10,7 +10,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
             [clojure.string :as str]
             [clojure.java.io :as io]
             [clojure.tools.logging :as log]
-            [com.ashafa.clutch [utils :as utils]]
+            [clj-http.client :as client]
             [clojure.set :refer [union]])
   (:use com.ashafa.clutch.http-client)
   (:import [java.net ConnectException]))
@@ -146,11 +146,11 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
                           (java.util.Date/from instant)))
         compaction-fn (fn [coll]
                         (let [coll-name (:name coll)
-                              url (str (get-database-url-by-channel eviction-channel coll-name) "/_compact")
-                              url' (utils/url (get-database eviction-channel coll-name))]
+                              url (str (get-database-url-by-channel eviction-channel coll-name) "/_compact")]
                           (log-info-timed
                            (format "compact collection %s url %s" coll-name url)
-                           (couchdb-request :post url' :data {}))))]
+                           ;; Send form params as a json encoded body (POST or PUT)
+                           (client/post url {:form-params {} :content-type :json}))))]
     (future
       (loop [next (System/currentTimeMillis)]
         (if (.started? eviction-channel)
@@ -161,7 +161,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
                (do
                  (try
                    (doseq [coll (vals @ctx)]
-                     (compaction-fn coll))
+                     (log/info (compaction-fn coll)))
                    (catch Throwable t (log/error t)))
                  (let [next (next-midnight)
                        _ (log/info (format "schedule next compaction for %s" next))]
