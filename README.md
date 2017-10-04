@@ -9,12 +9,12 @@ STM-based in-memory database storing persistent data structures
 Leiningen
 
 ```clojure
-[org.clojars.gixxi/lambdaroyal-memory "0.9.3"]
+[org.clojars.gixxi/lambdaroyal-memory "0.9.16"]
 ```
 
 Gradle
 ```
-compile "org.clojars.gixxi:lambdaroyal-memory:0.9.3"
+compile "org.clojars.gixxi:lambdaroyal-memory:0.9.16"
 ```
 
 Maven
