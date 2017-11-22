@@ -25,14 +25,14 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-
-(require 
- '[lambdaroyal.memory.ui-helper :refer :all]
- '[lambdaroyal.memory.core.tx :refer :all]
- '[lambdaroyal.memory.core.context :refer :all]
- '[lambdaroyal.memory.abstraction.search :refer :all]
- '[lambdaroyal.memory.helper :refer :all])
-(import [lambdaroyal.memory.core ConstraintException])
+(do
+  (require 
+   '[lambdaroyal.memory.ui-helper :refer :all]
+   '[lambdaroyal.memory.core.tx :refer :all]
+   '[lambdaroyal.memory.core.context :refer :all]
+   '[lambdaroyal.memory.abstraction.search :refer :all]
+   '[lambdaroyal.memory.helper :refer :all])
+  (import [lambdaroyal.memory.core ConstraintException]))
 
 
 
@@ -276,10 +276,83 @@
                (>>> :stock-order-item)
                (>>> :transport)))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; KEEPING YOUR DATA PERSISTENZ USING DATA EVICTORS
+;;
+;; ns lambdaroyal.memory.eviction.core
+;; ns lambdaroyal.memory.eviction.couchdb
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(require 
+ '[lambdaroyal.memory.eviction.core :as evict]
+ '[lambdaroyal.memory.eviction.couchdb :as evict-couchdb])
+
+
+;;just create an evictor and consider it when creating the model, you might have different 
+;;evictors and evictor combinators
+(def evictor (evict-couchdb/create :prefix "foo"))
+(def model
+  {:article
+   {:indexes [{:attributes [:ident]}
+              {:attributes [:client]}]
+    :evictor evictor}
+   :stock
+   {:indexes [{:attributes [:batch]}] :foreign-key-constraints [{:foreign-coll :article :foreign-key :article}]
+    :evictor evictor}})
+
+;;starting the evictor checks for the couchdb connection and creates all the databases
+(defn- start-coll [ctx coll]
+  @(.start (-> @ctx coll :evictor) ctx [(get @ctx coll)]))
+
+
+(def ctx (create-context model))
+(start-coll ctx :article)
+(start-coll ctx :stock)
+
+(def tx (create-tx ctx))
+
+(dosync
+ (doseq [x articles]
+   (insert tx :article (first x) (last x))))
+
+(dosync
+ (doseq [x stocks]
+   (insert tx :stock (first x) (last x))))
 
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Now we take everything done and start from scratch taking the data from the
+;; couchdb 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(def evictor (evict-couchdb/create :prefix "foo"))
+(def ctx (create-context model))
+(start-coll ctx :article)
+(start-coll ctx :stock)
+
+(def tx (create-tx ctx))
+
+
+(def x (select-first tx :article 1))
+
+;; all writing operations are async reflected within the perstent layer
+(dosync (alter-document tx :stock x assoc :size "megahuge"))
 
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; DATA HIERARCHIES - Building hierarchies groups data recursivly 
+;; as per a set of discriminator functions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(apply hierarchie-backtracking (select tx :stock) count
+       (fn [k v b]
+         v)
+       [#(-> % last :size) #(-> % last :color)])
 
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; ROADMAP
+;; Prio 1 - using etcd and/or rocksdb as persistence backend
+;; Prio 2 - WORM collection - storing certain data non-transactional, useful for large
+;; sets like history data
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
