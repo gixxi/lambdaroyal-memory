@@ -1,0 +1,95 @@
+did;ident;client;unit;price;inboundAmount
+1;Acai;Pflanzen;Strauch;20;
+2;Stachelbeere;Pflanzen;Strauch;20;100
+3;Erdbeere;Pflanzen;Pflanze;20;
+4;Pflaume;Pflanzen;Baum;79;
+5;Cashew;Pflanzen;Baum;199;
+6;Mandel;Pflanzen;Baum;240;
+7;Himbeere;Pflanzen;Strauch;29;
+8;Chicoree;Pflanzen;Pflanze;15.9;
+9;Chinakohl;Pflanzen;Setzling;0.9;
+10;Birne;Pflanzen;Baum;79;
+11;Kürbis;Pflanzen;Pflanze;6.9;
+12;Blaubeere;Pflanzen;Strauch;49;
+13;Brombeere;Pflanzen;Strauch;12.9;
+14;Traube;Pflanzen;Pflanze;119;
+15;Apfel;Pflanzen;Baum;59;
+16;Kiwi;Pflanzen;Strauch;149;
+17;Banane;Pflanzen;Stk;;200
+18;Orange;Pflanzen;Baum;269;
+19;Mango;Pflanzen;Baum;199;
+20;Waldbeeren Mix;Pflanzen;Set;55;
+21;Tropical Mix;Pflanzen;Set;999;
+23;Giesskanne Garden 10 l Anthrazit;Geräte;Stk;2.9;10
+24;Blumensprüher Fuchsia 0,7 l Türkis;Geräte;Stk;9.95;
+25;Ersatzspule T 374 Einzelfaden 1,5 mm x 10 m;Geräte;Stk;9.95;
+26;Benzin-Heckenschere GHT 45/ 28;Geräte;Stk;249;
+27;Elektro-Rasenmäher Powermax 1100/32;Geräte;Stk;112;
+28;Mähroboter WR101SI 20 V;Geräte;Stk;899;
+29;Classic Grasschere;Geräte;Stk;11.9;
+30;Strauchscherenaufsatz Isio;Geräte;Stk;39;
+31;Regenfasspumpe 4000/2;Geräte;Stk;93.85;
+32;Gartenpumpe 3500/4;Geräte;Stk;139;
+33;Schmutzwasserpumpe GH-DP 6315 N;Geräte;Stk;129;
+34;Wasserstop 13 mm (1/2")- 15 mm (5/8");Geräte;Stk;9.9;
+35;Schlagkopf mit Muffe AG 41,9 mm (R 1 1/4) IG 38,9 mm (Rp 1 1/4);Geräte;Stk;20.8999996185;
+36;Saugschlauch 3,5 m;Geräte;Stk;31;
+37;Pumpen-Vorfilter, Wasserdurchfluss bis 3000 l/h;Geräte;Stk;31;
+38;Handsäge/Grobzahnung 22,5 cm;Geräte;Stk;32;
+39;Streuwagen 300;Geräte;Stk;21;
+40;Teleskop Astschere 650 BT;Geräte;Stk;21;
+41;Gartenschere B/S-M;Geräte;Stk;12.8999996185;
+42;Strauchschneider StarCut 160 plus;Geräte;Stk;79;
+43;Damenspaten Comfort mit Trittschutz dampfgebogener Esche T-Stiel 85 cm;Geräte;Stk;49;
+44;212105088;VIVA;Stück;;20
+45;212110088;VIVA;Stück;;20
+46;730551022;VIVA;Stück;;20
+47;1001103059;VIVA;Stück;;20
+48;1001112059;VIVA;Stück;;20
+49;1001114059;VIVA;Stück;;20
+50;1002103117;VIVA;Stück;;20
+51;1002112117;VIVA;Stück;;20
+52;1002114117;VIVA;Stück;;20
+53;2258103070;VIVA;Stück;;20
+54;2258103090;VIVA;Stück;;20
+55;2258108070;VIVA;Stück;;20
+56;2258108090;VIVA;Stück;;20
+57;2280910340;VIVA;Stück;;20
+58;2280910840;VIVA;Stück;;20
+59;2281010340;VIVA;Stück;;20
+60;2281010840;VIVA;Stück;;20
+61;2998103030;VIVA;Stück;;20
+62;2998103040;VIVA;Stück;;20
+63;2998103050;VIVA;Stück;;20
+64;2998103060;VIVA;Stück;;20
+65;2998108040;VIVA;Stück;;20
+66;2998108050;VIVA;Stück;;20
+67;2998108060;VIVA;Stück;;20
+68;2998112030;VIVA;Stück;;20
+69;2998112040;VIVA;Stück;;20
+70;2998112050;VIVA;Stück;;20
+71;2998112060;VIVA;Stück;;20
+72;2998114030;VIVA;Stück;;20
+73;2998114040;VIVA;Stück;;20
+74;2998114050;VIVA;Stück;;20
+75;2998114060;VIVA;Stück;;20
+76;5004103070;VIVA;Stück;;20
+77;5004103090;VIVA;Stück;;20
+78;5004108070;VIVA;Stück;;20
+79;5004108090;VIVA;Stück;;20
+80;5097103070;VIVA;Stück;;20
+81;5097103090;VIVA;Stück;;20
+82;5098103070;VIVA;Stück;;20
+83;5098103090;VIVA;Stück;;20
+84;5407103060;VIVA;Stück;;20
+85;5407103080;VIVA;Stück;;20
+86;5407103100;VIVA;Stück;;20
+87;5407108080;VIVA;Stück;;20
+88;5410103060;VIVA;Stück;;20
+89;5410103080;VIVA;Stück;;20
+90;5410103100;VIVA;Stück;;20
+91;5410108080;VIVA;Stück;;20
+92;5410108100;VIVA;Stück;;20
+93;7305510031;VIVA;Stück;;20
+94;Box;thurmed;;;
+95;painting;;;;
