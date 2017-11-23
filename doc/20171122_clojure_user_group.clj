@@ -32,9 +32,10 @@
    '[lambdaroyal.memory.core.context :refer :all]
    '[lambdaroyal.memory.abstraction.search :refer :all]
    '[lambdaroyal.memory.helper :refer :all])
-  (import [lambdaroyal.memory.core ConstraintException]))
+  (import [lambdaroyal.memory.core ConstraintException]
+          [org.apache.log4j BasicConfigurator]))
 
-
+(BasicConfigurator/configure)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; slurp-in some demodata
@@ -335,7 +336,7 @@
 (def x (select-first tx :article 1))
 
 ;; all writing operations are async reflected within the perstent layer
-(dosync (alter-document tx :stock x assoc :size "megahuge"))
+(dosync (alter-document tx :article x assoc :size "megahuge2"))
 
 
 

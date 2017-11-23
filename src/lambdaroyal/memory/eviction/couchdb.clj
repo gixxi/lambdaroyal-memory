@@ -15,8 +15,6 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
   (:use com.ashafa.clutch.http-client)
   (:import [java.net ConnectException]))
 
-(def stop-on-fatal (atom false))
-
 (defn- check-couchdb-connection [url]
   (let [_ (log/info (format "try to access couchdb server using url %s" url))
         e (format "Cannot access Couch DB server on %s. Did you start it (probably by sudo /usr/local/etc/init.d/couchdb start" url)]
@@ -42,9 +40,9 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
 
 
 (defn- is-update-conflict [e]
-  (try
-    (boolean (re-find #"update conflict" (-> e .getData :object :body)))
-    (catch Exception e false)))
+  (and (instance? clojure.lang.ExceptionInfo e) 
+       (if-let [body (-> e ex-data :body)]
+         (boolean (re-find #"update conflict" body)))))
 
 (defn- put-document 
   "inserts a document to the couchdb instance referenced by the CouchEvictionChannel [channel]. if a version conflict occurs then this function trys"
@@ -53,33 +51,45 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
         rev (get @(:revs channel) rev-key)
         doc (assoc user-value :_id (str unique-key) :unique-key unique-key)
         doc (if rev (assoc doc :_rev rev) doc)
-        put (fn [doc] (let [result (clutch/put-document (get-database channel coll-name) doc)]
-                        (swap! (.revs channel) assoc rev-key (:_rev result))))]
+        put (fn [doc] (try
+                        (let [result (clutch/put-document (get-database channel coll-name) doc)]
+                          (do 
+                            (swap! (.revs channel) assoc rev-key (:_rev result))
+                            true))
+                        (catch Exception e
+                          (if (is-update-conflict e) 
+                            false
+                            (throw e)))))]
     (try
-      (put doc)
-      (catch Exception e 
-        ;;retry
-        (let [_ (if (is-update-conflict e)
-                  (log/warn (format "update conflict on %s. try again." doc)))
-              existing (clutch/get-document (get-database channel coll-name) (str unique-key))
-              doc (assoc doc :_rev (:_rev existing))]
-          (try
-            (put doc)
-            (catch Exception e
-              (log/fatal (format "failed to put document %s to couchdb during retry. " doc))
-              (.stop channel))))))))
+      (loop [doc doc]
+        (if-not (put doc)
+          (let [existing (clutch/get-document (get-database channel coll-name) (str unique-key))
+                doc (assoc doc :_rev (:_rev existing))]
+            (do
+              (log/warn (format "update conflict on %s. try again." doc))
+              (recur doc)))))
+      (catch Exception e
+        (log/fatal (format "failed to put document %s to couchdb. " doc) e)))))
 
 (defn- delete-document 
   "deletes a document from the couchdb"
   [channel coll-name unique-key]
-  (if-let [existing (clutch/get-document (get-database channel coll-name) (str unique-key))]
+  (let [delete (fn [document]
+                 (try
+                   (do
+                     (clutch/delete-document (get-database channel coll-name) document)
+                     (swap! (.revs channel) dissoc [coll-name unique-key])
+                     true)
+                   (catch Exception e
+                     (if (is-update-conflict e) 
+                       false
+                       (throw e)))))]
     (try
-      (do
-        (clutch/delete-document (get-database channel coll-name) existing)
-        (swap! (.revs channel) dissoc [coll-name unique-key]))
+      (loop [existing (clutch/get-document (get-database channel coll-name) (str unique-key))]
+        (if-not (delete existing)
+          (recur (clutch/delete-document (get-database channel coll-name) existing))))
       (catch Exception e
-        (log/fatal (format "failed to delete document %s from couchdb. " existing))
-        (if @stop-on-fatal (.stop channel))))))
+        (log/fatal (format "failed to delete document collection: %s id: %s from couchdb. " coll-name unique-key))))))
 
 (defn- delete-coll
   "deletes a document db from the couchdb"
@@ -89,8 +99,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
       (clutch/delete-database
        (get-database channel coll-name)))
     (catch Exception e
-      (log/fatal (format "failed to delete db %s from couchdb. " coll-name))
-      (if @stop-on-fatal (.stop channel)))))
+      (log/fatal (format "failed to delete db %s from couchdb. " coll-name)))))
 
 (defrecord CouchEvictionChannel [url prefix revs ^clojure.lang.Atom started]
   evict/EvictionChannel
