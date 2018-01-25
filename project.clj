@@ -1,4 +1,4 @@
-(defproject org.clojars.gixxi/lambdaroyal-memory "0.9.16"
+(defproject org.clojars.gixxi/lambdaroyal-memory "0.9.17"
   :description "STM-based in-memory database storing persistent data structures"
   :url "https://github.com/gixxi/lambdaroyal-memory"
   :license {:name "FreeBSD License"
@@ -12,8 +12,9 @@
                  [com.ashafa/clutch "0.4.0"
                   :exclusions [clj-http]]
                  [org.clojure/tools.logging "0.3.1"]
+                 [org.clojure/data.json "0.2.6"]
                  [org.slf4j/slf4j-log4j12 "1.7.1"]
-                 [log4j "1.2.15" 
+                 [log4j "1.3" 
                   :exclusions [javax.mail/mail
                              javax.jms/jms
                              com.sun.jdmk/jmxtools

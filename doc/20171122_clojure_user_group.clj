@@ -29,12 +29,14 @@
   (require 
    '[lambdaroyal.memory.ui-helper :refer :all]
    '[lambdaroyal.memory.core.tx :refer :all]
+   '[clojure.data.json :as json]
    '[lambdaroyal.memory.core.context :refer :all]
    '[lambdaroyal.memory.abstraction.search :refer :all]
    '[lambdaroyal.memory.helper :refer :all])
-  (import [lambdaroyal.memory.core ConstraintException]))
+  (import [lambdaroyal.memory.core ConstraintException]
+          [org.apache.log4j BasicConfigurator]))
 
-
+(BasicConfigurator/configure)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; slurp-in some demodata
@@ -335,7 +337,7 @@
 (def x (select-first tx :article 1))
 
 ;; all writing operations are async reflected within the perstent layer
-(dosync (alter-document tx :stock x assoc :size "megahuge"))
+(dosync (alter-document tx :article x assoc :size "megahuge2"))
 
 
 
@@ -356,3 +358,25 @@
 ;; Prio 2 - WORM collection - storing certain data non-transactional, useful for large
 ;; sets like history data
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(with-open [rdr (clojure.java.io/reader "/home/gix/tdd_ml_weekly_need_restore.txt")]
+      (doall
+       (map
+        (fn [line]
+          (let [json (re-find #"\{.*\}" (re-find #":card\ \[.*\]\,\ :sess" line))
+                xs (try (json/read-str json) (catch Exception e nil))]
+            (if (and xs (get xs "KW") (get xs "Personen")) 
+              (let [as (get xs "Abgabestelle")]
+                (println (re-find #"\d{4}-\d{2}-\d{2}" line) 
+                         \tab (if as (last as) "")
+                         \tab (or (get xs "KW") "")
+                         \tab (or (get xs "Personen") "")
+                         \tab (or (get xs "BK") "")
+                         \tab (or (get xs "T1") "")
+                         \tab (or (get xs "T2") ""))))))
+        (take-nth 2 (line-seq rdr)))))
+
+
+
+
