@@ -301,6 +301,7 @@
 
 
 (defn- alter-index
+  ;;RISK
   [idx coll-tuple old-user-value new-user-value]
   (let [old-attribute-values (attribute-values old-user-value (.attributes idx))
         new-attribute-values (attribute-values new-user-value (.attributes idx))]
