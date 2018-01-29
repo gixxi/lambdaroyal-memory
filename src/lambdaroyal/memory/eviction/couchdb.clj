@@ -110,21 +110,20 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
                     (dependency-model-ordered colls)
                     (map :name colls))]
         (do
-          (log/info (format "collection order %s" (apply str (interpose " -> " colls))))
+          (println (format "collection order %s" (apply str (interpose " -> " colls))))
           (log-info-timed 
            "read-in collections"
            (doall 
             (map
              #(let [db (get-database this %)
-                    docs (clutch/all-documents db)
+                    docs (clutch/all-documents db {:include_docs true})
                     tx (create-tx ctx :force true)]
                 (doseq [doc docs]
-                  (let [{:keys [id]} doc
-                        existing (clutch/get-document (get-database this %) id) 
+                  (let [existing (:doc doc)                         
                         user-scope-tuple (dosync
-                                          (insert tx % (-> existing :unique-key) existing))]
+                                          (insert tx % (:unique-key existing) existing))]
                     (swap! (.revs this) assoc [% (first user-scope-tuple)] (:_rev existing))))
-                (log/info (format "collection %s contains %d documents" % (count docs))))
+                (println (format "collection %s contains %d documents" % (count docs))))
              colls)))
           (reset! (.started this) true)))))
   (started? [this] @(.started this))
@@ -156,10 +155,8 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
         compaction-fn (fn [coll]
                         (let [coll-name (:name coll)
                               url (str (get-database-url-by-channel eviction-channel coll-name) "/_compact")]
-                          (log-info-timed
-                           (format "compact collection %s url %s" coll-name url)
-                           ;; Send form params as a json encoded body (POST or PUT)
-                           (client/post url {:form-params {} :content-type :json}))))]
+                          ;; Send form params as a json encoded body (POST or PUT)
+                          (client/post url {:form-params {} :content-type :json})))]
     (future
       (loop [next (System/currentTimeMillis)]
         (if (.started? eviction-channel)
@@ -170,7 +167,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
                (do
                  (try
                    (doseq [coll (vals @ctx)]
-                     (log/info (compaction-fn coll)))
+                     (compaction-fn coll))
                    (catch Throwable t (log/error t)))
                  (let [next (next-midnight)
                        _ (log/info (format "schedule next compaction for %s" next))]
