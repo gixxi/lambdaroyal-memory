@@ -1,0 +1,11 @@
+{
+  "name": "lambdaroyal-memory",
+  "version": "1.4.0",
+  "description": "holy javascript client/server communication over websockets (sync/async/timed/publish/subscribed/multichan)",
+  "main": "lambdaroyal-autobahn.js",
+  "homepage": "https://github.com/gixxi/lambdaroyal-autobahn",
+  "repository": "https://github.com/gixxi/lambdaroyal-autobahn",
+  "author": "gixxi <christian.meichsner@live.com>",
+  "license": "FreeBSD",
+  "private": false
+}
