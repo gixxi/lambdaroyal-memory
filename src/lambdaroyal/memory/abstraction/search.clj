@@ -275,17 +275,19 @@
                  (= (.foreign-key %) foreign-key)) %) rics))))
 
 (defn by-ric
-  "returns all user scope tuples from collection [source] that refer to collection [target] by some ReferrerIntegrityConstraint and have foreign-key of the sequence [keys]. the sequence is supposed to be redundancy free (set). opts might contain :ratio-full-scan iff greater or equal to the ratio (count keys / number of tuples in target of [0..1]) then the source collection is fully scanned for matching tuples rather than queried by index lookups. If not given, 0.4 is the default barrier. If the :foreign-key is given within the opts then we explicitly seach for a ric with a certain foreign-key."
+  "returns all user scope tuples from collection [source] that refer to collection [target] by some ReferrerIntegrityConstraint and have foreign-key of the sequence [keys]. the sequence is supposed to be redundancy free (set). opts might contain :ratio-full-scan iff greater or equal to the ratio (count keys / number of tuples in target of [0..1]) then the source collection is fully scanned for matching tuples rather than queried by index lookups. If not given, 0.4 is the default barrier. If the :foreign-key is given within the opts then we explicitly seach for a ric with a certain foreign-key. :abs-full-scan iff the number of keys is greater than the abs-full-scan, then the source collection is fully scanned for matching tuples rather and queries by index lookups"
   ([tx source target keys & opts]
    (with-meta 
      (let [opts (if opts (apply hash-map opts))
-           {foreign-key :foreign-key verbose :verbose parallel :parallel, ratio-full-scan :ratio-full-scan, :or {parallel true ratio-full-scan 0.4 verbose false}} opts
+           {foreign-key :foreign-key verbose :verbose parallel :parallel, ratio-full-scan :ratio-full-scan abs-full-scan :abs-full-scan, :or {parallel true ratio-full-scan 0.2 verbose false abs-full-scan 512}} opts
            ric (or (if foreign-key 
                      (ric tx source target foreign-key) (ric tx source target)) 
                    (throw (IllegalStateException. (str "Failed to build data projection - no ReferrerIntegrityConstraint from collection " source " to collection " target " defined."))))
            target-count (-> tx :context deref target :data deref count)
            keys-to-collsize-ratio (if (= target-count 0) 0 (/ (count keys) target-count))
-           full-scan (> keys-to-collsize-ratio ratio-full-scan)
+           full-scan (or
+                      (> (count keys) abs-full-scan)
+                      (> keys-to-collsize-ratio ratio-full-scan))
            _ (if verbose (println :search-by-ric-keys :ric source (.foreign-key ric) "->" target :keys (count keys) :target-count target-count :ratio keys-to-collsize-ratio))
            _ (if (and verbose full-scan) (println :full-scan source target keys-to-collsize-ratio))
            ctx (-> tx :context deref)
@@ -309,9 +311,10 @@
                                   [key]))))
                  ;;one seq with the results for each key
                  xs ((if parallel pmap map) find-fn keys)]
-             (reduce 
-              (fn [acc x]
-                (concat acc x)) [] xs)))))
+             (persistent! (loop [res (transient []) xs (filter #(-> % empty? not) xs)]
+                            (if-let [xs' (first xs)]
+                              (recur (reduce conj! res xs') (rest xs))
+                              res)))))))
      {:coll-name target})))
 
 (defn >>
@@ -335,6 +338,14 @@
     (with-meta (fn []
                  (with-meta 
                    (tx/select tx coll-name) meta)) meta)))
+
+(defn filter-xs
+  "higher order function that returns a function that returns a sequence of all tuples within xs that need to belong the collection with name [coll-name]"
+  [coll-name xs]
+  (let [meta {:coll-name coll-name}]
+    (with-meta (fn []
+                 (with-meta 
+                   xs meta)) meta)))
 
 (defn filter-key
   "higher order function that returns a function that returns a sequence of all tupels whose key is equal to [key]"
