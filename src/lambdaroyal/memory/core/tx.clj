@@ -426,8 +426,7 @@
       (if (empty? todo)
         done
         ;;else
-        (let [
-              ctx (-> tx :context deref)
+        (let [ctx (-> tx :context deref)
               coll (get ctx coll-name)
               next (first todo)
               constraints (map last (-> coll :constraints deref))
