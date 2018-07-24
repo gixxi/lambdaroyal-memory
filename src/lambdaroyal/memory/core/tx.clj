@@ -466,7 +466,7 @@
         ;;get a map of key->referencee
         merge-map (reduce
                    (fn [acc ric]
-                     (assoc acc (.foreign-key ric)
+                     (assoc acc (.foreign-coll ric)
                             (apply replace-in-tree tx (.foreign-coll ric) (last (get referencees [(.foreign-coll ric) (get (last user-scope-tuple) (.foreign-key ric))])) referencees opts)
                             ))
                    {} rics)]
