@@ -1,10 +1,10 @@
 (ns lambdaroyal.memory.abstraction.test-search
   (:require [midje.sweet :refer :all]
-           [lambdaroyal.memory.core.tx :refer :all]
-           [lambdaroyal.memory.core.context :refer :all]
-           [lambdaroyal.memory.helper :refer :all]
-           [lambdaroyal.memory.abstraction.search :refer :all]
-           [clojure.test :refer :all])
+            [lambdaroyal.memory.core.tx :refer :all]
+            [lambdaroyal.memory.core.context :refer :all]
+            [lambdaroyal.memory.helper :refer :all]
+            [lambdaroyal.memory.abstraction.search :refer :all]
+            [clojure.test :refer :all])
   (:import  [lambdaroyal.memory.core ConstraintException]))
 
 (def meta-model
