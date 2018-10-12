@@ -16,7 +16,9 @@
   {
    :order
    {:indexes [{:name :client :unique false :attributes [:client]}
-              {:name :client-no :unique false :attributes [:client :no]}]}
+              {:name :client-no :unique false :attributes [:client :no]}
+              {:name :bool-index :unique false :attributes [:bool]}
+              {:name :number-index :unique false :attributes [:number]}]}
    :part-order
    {:indexes []}
    :interaction

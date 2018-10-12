@@ -92,6 +92,13 @@
      key
      [key (bigint 1)])))
 
+(defn create-unique-stop-key 
+  "creates a unique key [key running] that can be used for < and <= comparator"  
+  [key]
+   (if (is-unique-key? key)
+     key
+     [key (bigint (Long/MAX_VALUE))]))
+
 (defn- stage-next-unique-key
   "returns the next key that would be used for the collection [coll] and the given user key [key]. this can be used to return bounded subsets that match only those 
   documents associated with the user key [key]"
@@ -130,19 +137,27 @@
   [value attributes]
   (vec (map #(get value %) attributes)))
 
+(defn- create-unique-key-for-comp [start-test key]
+  (cond
+    (= (type start-test) (type >)) (create-unique-stop-key key)
+    (= (type start-test) (type >=)) (create-unique-key key)
+    (= (type start-test) (type <=)) (create-unique-stop-key key) 
+    (= (type start-test) (type <)) (create-unique-key key)
+    :else (throw (IllegalArgumentException. (str "cannot use comparator " start-test " as argument to create a match-key")))))
+
 (deftype
     ^{:doc"A index implementation that is defined over a set of comparable attributes. The attributes are given as per the access keys that refer to the attributes to be indexed"}
     AttributeIndex [this name unique attributes]
   Index
   (find [this start-test start-key stop-test stop-key]
     (let [this (.this this)
-          start-key (create-unique-key start-key)
-          stop-key (create-unique-key stop-key)
+          start-key (create-unique-key-for-comp start-test start-key)
+          stop-key (create-unique-key-for-comp stop-test stop-key)
           data (-> this :data deref)]
       (map last (subseq (-> this :data deref) start-test start-key stop-test stop-key))))
   (find-without-stop [this start-test start-key]
     (let [this (.this this)
-          start-key (create-unique-key start-key)]
+          start-key (create-unique-key-for-comp start-test start-key)]
       (map last (subseq (-> this :data deref) start-test start-key))))
   (applicable? [this key]
     (and

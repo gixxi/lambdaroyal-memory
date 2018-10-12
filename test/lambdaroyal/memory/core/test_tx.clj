@@ -193,6 +193,43 @@
     (fact "must not find item at all using index 1 after removal" (first (select tx :order [:client] >= [1] < [2])) => falsey)
     (fact "must not find item at all using index 2 after removal" (first (select tx :order [:client :number] >= [1 2] < [1 3])) => falsey)))
 
+(facts "check start and stop condition for indexes"
+  (let [ctx (create-context meta-model-with-indexes)
+        tx (create-tx ctx)
+        _ (dosync
+           (insert tx :order 0 {:type :test  :number 5})
+           (insert tx :order 1 {:type :test :client "client1" :bool false :number 2})
+           (insert tx :order 2 {:type :test :client "client1" :bool true :number 5})
+           (insert tx :order 3 {:type :test :client "client0" :bool true :number 1})
+           (insert tx :order 4 {:type :test :client "client4"})
+           (insert tx :order 5 {:type :test :bool false}))] 
+    ;; strings
+    (do
+      (fact "start cond >= nil must reveal all" (into #{} (map #(first %) (select tx :order [:client] >= [nil]))) => #{0 1 2 3 4 5})
+      (fact "start cond > nil" (into #{} (map #(first %) (select tx :order [:client] > [nil]))) => #{1 2 3 4})
+      (fact "start cond >= non-existing" (into #{} (map #(first %) (select tx :order [:client] >= ["client"]))) => #{1 2 3 4})
+      (fact "start cond > non-existing" (into #{} (map #(first %) (select tx :order [:client] > ["client"]))) => #{1 2 3 4})
+      (fact "start cond >= largest" (into #{} (map #(first %) (select tx :order [:client] >= ["client4"]))) => #{4})
+      (fact "start cond >= existing" (into #{} (map #(first %) (select tx :order [:client] > ["client4"]))) => #{})
+      (fact "start cond >= exceed upper bound" (into #{} (map #(first %) (select tx :order [:client] > ["client5"]))) => #{})
+      (fact "start cond <= exceed upper bound" (into #{} (map #(first %) (select tx :order [:client] <= ["client5"]))) => #{0 1 2 3 4 5})
+      (fact "start cond < exceed upper bound" (into #{} (map #(first %) (select tx :order [:client] < ["client5"]))) => #{0 1 2 3 4 5})
+      (fact "start cond <= below lower bound" (into #{} (map #(first %) (select tx :order [:client] <= ["client"]))) => #{0 5})
+      (fact "start cond < below upper bound" (into #{} (map #(first %) (select tx :order [:client] < ["client"]))) => #{0 5}))
+    ;; numbers
+    (do
+      (fact "start cond >= nil must reveal all" (into #{} (map #(first %) (select tx :order [:number] >= [nil]))) => #{0 1 2 3 4 5})
+      (fact "start cond > nil" (into #{} (map #(first %) (select tx :order [:number] > [nil]))) => #{0 1 2 3})
+      (fact "start cond >= non-existing" (into #{} (map #(first %) (select tx :order [:number] >= [-1]))) => #{0 1 2 3})
+      (fact "start cond > non-existing" (into #{} (map #(first %) (select tx :order [:number] > [-1]))) => #{0 1 2 3})
+      (fact "start cond >= largest" (into #{} (map #(first %) (select tx :order [:number] >= [5]))) => #{0 2})
+      (fact "start cond >= existing" (into #{} (map #(first %) (select tx :order [:number] > [1]))) => #{0 1 2})
+      (fact "start cond >= exceed upper bound" (into #{} (map #(first %) (select tx :order [:number] > [10]))) => #{})
+      (fact "start cond <= exceed upper bound" (into #{} (map #(first %) (select tx :order [:number] <= [10]))) => #{0 1 2 3 4 5})
+      (fact "start cond < exceed upper bound" (into #{} (map #(first %) (select tx :order [:number] < [10]))) => #{0 1 2 3 4 5})
+      (fact "start cond <= below lower bound" (into #{} (map #(first %) (select tx :order [:number] <= [1]))) => #{3 4 5})
+      (fact "start cond < exceed upper bound" (into #{} (map #(first %) (select tx :order [:number] < [1]))) => #{4 5}))))
+
 (facts "altering indexed elements"
   (let [ctx (create-context meta-model-with-indexes)
         tx (create-tx ctx)
