@@ -142,10 +142,10 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
 (defn create 
   "provide custom url by calling this function with varargs :url \"https://username:password@account.cloudant.com\""
   [& args]
-  (let [args (apply hash-map args)
+  (let [args (if args (apply hash-map args) {})
         {:keys [url prefix] :or {url (or (System/getenv "couchdb.url") "http://localhost:5984")}} args
         _ (check-couchdb-connection url)]
-    (CouchEvictionChannel. url prefix (atom {}) (atom false))))
+    (CouchEvictionChannel. url prefix (atom {}) (or (:started args) (atom false)))))
 
 (defn schedule-compaction [eviction-channel ctx]
   (let [next-midnight (fn []

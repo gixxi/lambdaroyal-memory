@@ -293,6 +293,7 @@
       (finally
         (.stop (-> @ctx :order :evictor))))))
 
+
 (facts "inserting within tx, reload, update and delete a card within tx', check that the card is deleted "
   (let [evictor (evict-couchdb/create)
         _ (reset! evict/verbose' false)
@@ -341,3 +342,4 @@
         (do
         (Thread/sleep 5000)
         (.stop (-> @ctx :order :evictor)))))))
+
