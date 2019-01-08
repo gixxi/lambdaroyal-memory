@@ -161,6 +161,7 @@
     
     (#(if (:evictor collection) (assoc % :evictor (create-proxy (:evictor collection) (:evictor-delay collection))) %)
      {:running (ref (bigint 0))
+      :gtid (atom nil)
       :name (:name collection)
       :data (ref (sorted-map))
       :constraints (ref 
