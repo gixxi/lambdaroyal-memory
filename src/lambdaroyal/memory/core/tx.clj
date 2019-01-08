@@ -10,6 +10,34 @@
 ;;use this contains information on the old user-value during card alterings
 (declare ^{:dynamic true} *alter-context*)
 
+;;thread-local global transaction id
+(declare  ^{:dynamic true} *gtid*)
+
+(def gtid (atom (System/nanoTime)))
+
+;;this macro sets the gtid for the outermost call
+(defmacro gtid-dosync [& body]
+  `(if-not (bound? #'*gtid*)
+     (binding [*gtid* (swap! gtid inc)]
+       (dosync ~@body))
+     (dosync ~@body)))
+
+(defn get-gtid []
+  (if (bound? #'*gtid*)
+    *gtid*
+    nil))
+
+(defn decorate-with-gtid [val]
+  (if (bound? #'*gtid*)
+    (assoc val :gtid_ *gtid*)
+    val))
+
+(defn decorate-coll-with-gtid [coll gtid]
+  (if (some? gtid)
+    (let [old (:gtid coll)]
+      (if (or (nil? @old) (< @old gtid))
+        (reset! (:gtid coll) gtid)))))
+
 (defn create-tx 
   "creates a transaction upon user-scope function like select, insert, alter-document, delete can be executed. Iff an eviction channel is assigned to a collection then this channel needs to be started otherwise a "
   [ctx & opts]
@@ -307,8 +335,10 @@
   (let [ctx (-> tx :context deref)
         coll (get ctx coll-name)
         data (:data coll)
-        coll-tuple [key (value-wrapper coll key value)]]
+        val (decorate-with-gtid value)
+        coll-tuple [key (value-wrapper coll key val)]]
     (do
+      (decorate-coll-with-gtid coll (:gtid_ val))
       (process-constraints :insert precommit ctx coll key value)
       (alter data assoc key (last coll-tuple))
       (process-constraints :insert postcommit ctx coll coll-tuple)
@@ -355,9 +385,16 @@
                       #(or 
                         (not (satisfies? Index %))
                         (instance? ReferrerIntegrityConstraint %)) constraints))
-        new-user-value (apply alter (last coll-tuple) fn args)]
+
+        
+        new-user-value (let [res (apply alter (last coll-tuple) fn args)]
+                         (if-let [gtid' (get-gtid)]
+                           (alter (last coll-tuple) assoc :gtid_ gtid')
+                           res))]
     (binding [*alter-context* {:old-user-value old-user-value :new-user-value new-user-value}]
-      (do
+      (do        
+        
+        (decorate-coll-with-gtid coll (:gtid_ new-user-value))
         ;;check all relevant constraints on the referrer site of the coin
         (doseq [_ constraints]
           (precommit _ ctx coll :update (first user-scope-tuple) new-user-value))
