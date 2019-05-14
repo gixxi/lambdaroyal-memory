@@ -503,7 +503,8 @@
           (recur (rest todo) done))))))
 
 (defn- replace-in-tree [tx coll-name user-scope-tuple referencees & opts]
-  (let [referencees (apply tree-referencees tx coll-name user-scope-tuple opts)
+  (let [{use-attr-name :use-attr-name} (if opts (apply hash-map opts) {})
+        referencees (apply tree-referencees tx coll-name user-scope-tuple opts)
         ctx (-> tx :context deref)
         coll (get ctx coll-name)
         constraints (map last (-> coll :constraints deref))
@@ -518,7 +519,7 @@
         ;;get a map of key->referencee
         merge-map (reduce
                    (fn [acc ric]
-                     (assoc acc (.foreign-coll ric)
+                     (assoc acc (if-not use-attr-name (.foreign-coll ric) (.foreign-key ric))
                             (apply replace-in-tree tx (.foreign-coll ric) (last (get referencees [(.foreign-coll ric) (get (last user-scope-tuple) (.foreign-key ric))])) referencees opts)
                             ))
                    {} rics)]
@@ -530,4 +531,15 @@
   "takes a document [user-scope-tuple] from the collection with name [coll-name] and gives back derived document where all foreign keys are replaced by their respective documents."
   [tx coll-name user-scope-tuple & opts]
   {:pre [(contains? (-> tx :context deref) coll-name)]}
-  (replace-in-tree tx coll-name user-scope-tuple tree-referencees :cache {}))
+  (let [{use-attr-name :use-attr-name, :or {use-attr-name false}} (if opts (apply hash-map opts) {})]
+    (replace-in-tree tx coll-name user-scope-tuple tree-referencees :cache {} :use-attr-name use-attr-name)))
+
+
+
+
+
+
+
+
+
+

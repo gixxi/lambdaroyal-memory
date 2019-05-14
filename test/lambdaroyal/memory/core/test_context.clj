@@ -36,6 +36,19 @@
    :line-item
    {:indexes [] :foreign-key-constraints [{:name :part-order :foreign-coll :part-order :foreign-key :part-order}]}})
 
+(def meta-model-with-ric'
+  {:type
+   {:indexes []}
+   :order
+   {:indexes []}
+   :part-order
+   {:indexes [] :foreign-key-constraints [
+                                          {:name :type :foreign-coll :type :foreign-key :type}
+                                          {:name :order :foreign-coll :order :foreign-key :order}]}
+   :line-item
+   {:indexes [] :foreign-key-constraints [{:name :part-order1 :foreign-coll :part-order :foreign-key :part-order-original}
+                                          {:name :part-order2 :foreign-coll :part-order :foreign-key :part-order-old}]}})
+
 (facts "facts about the created context with indexes"
        (fact "can create" (create-context meta-model-with-indexes) => truthy))
 

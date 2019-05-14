@@ -2,7 +2,7 @@
   (:require [midje.sweet :refer :all]
             [lambdaroyal.memory.core.tx :refer :all]
             [lambdaroyal.memory.core.context :refer :all]
-            [lambdaroyal.memory.core.test-context :refer [meta-model meta-model-with-indexes meta-model-with-ric]]
+            [lambdaroyal.memory.core.test-context :refer [meta-model meta-model-with-indexes meta-model-with-ric meta-model-with-ric']]
             [lambdaroyal.memory.helper :refer :all])
   (:import [lambdaroyal.memory.core ConstraintException]))
 
@@ -330,6 +330,31 @@
                         (insert tx :line-item 1 {:no 1 :part-order 1}))
                 (tree tx :line-item (select-first tx :line-item 1)))))
       => [1 {:coll :line-item, :no 1, :part-order [1 {:coll :part-order, :gaga "baba", :order [1 {:coll :order, :name :foo}], :type [1 {:coll :type}]}]}])
+
+(fact "building the tree for a user-scope-tuple and assoc referencees by attr-name" 
+      (time (let [rics (map #(-> % last .name) (referential-integrity-constraint-factory meta-model-with-ric'))
+                  ctx (create-context meta-model-with-ric')
+                  tx (create-tx ctx)]
+              (do
+                (dosync (insert tx :type 1 {})
+                        (insert tx :order 1 {:name :foo})
+                        (insert tx :part-order 1 {:type 1 :order 1 :gaga "baba"})
+                        (insert tx :part-order 2 {:type 1 :order 1 :gaga "bobo"})
+                        (insert tx :line-item 1 {:no 1 :part-order-original 1 :part-order-old 2}))
+                (tree tx :line-item (select-first tx :line-item 1) :use-attr-name true))))
+      => [1
+          {:coll :line-item
+           :no 1
+           :part-order-old [2
+                            {:coll :part-order
+                             :gaga "bobo"
+                             :order [1 {:coll :order :name :foo}]
+                             :type [1 {:coll :type}]}]
+           :part-order-original [1
+                                 {:coll :part-order
+                                  :gaga "baba"
+                                  :order [1 {:coll :order :name :foo}]
+                                  :type [1 {:coll :type}]}]}])
 
 (facts "facts about adding constraints (RICs) at runtime"
        (let [ctx (create-context meta-model)
