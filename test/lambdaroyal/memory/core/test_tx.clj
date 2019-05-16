@@ -319,6 +319,7 @@
                 (tree-referencees tx :part-order (select-first tx :part-order 1))))) 
       => {[:order 1] [:order [1 {:name :foo}]], [:type 1] [:type [1 {}]]})
 
+
 (fact "building the tree for a user-scope-tuple" 
       (time (let [rics (map #(-> % last .name) (referential-integrity-constraint-factory meta-model-with-ric))
                   ctx (create-context meta-model-with-ric)
@@ -329,6 +330,18 @@
                         (insert tx :part-order 1 {:type 1 :order 1 :gaga "baba"})
                         (insert tx :line-item 1 {:no 1 :part-order 1}))
                 (tree tx :line-item (select-first tx :line-item 1)))))
+      => [1 {:coll :line-item, :no 1, :part-order [1 {:coll :part-order, :gaga "baba", :order [1 {:coll :order, :name :foo}], :type [1 {:coll :type}]}]}])
+
+(fact "building the tree for a user-scope-tuple (old signature)" 
+      (time (let [rics (map #(-> % last .name) (referential-integrity-constraint-factory meta-model-with-ric))
+                  ctx (create-context meta-model-with-ric)
+                  tx (create-tx ctx)]
+              (do
+                (dosync (insert tx :type 1 {})
+                        (insert tx :order 1 {:name :foo})
+                        (insert tx :part-order 1 {:type 1 :order 1 :gaga "baba"})
+                        (insert tx :line-item 1 {:no 1 :part-order 1}))
+                (tree tx :line-item (select-first tx :line-item 1) {}))))
       => [1 {:coll :line-item, :no 1, :part-order [1 {:coll :part-order, :gaga "baba", :order [1 {:coll :order, :name :foo}], :type [1 {:coll :type}]}]}])
 
 (fact "building the tree for a user-scope-tuple and assoc referencees by attr-name" 

@@ -24,6 +24,7 @@
    :interaction
    {:indexes [{:attributes [:keyword]}]}})
 
+
 (def meta-model-with-ric
   {:type
    {:indexes []}
@@ -33,6 +34,19 @@
    {:indexes [] :foreign-key-constraints [
                                           {:name :type :foreign-coll :type :foreign-key :type}
                                           {:name :order :foreign-coll :order :foreign-key :order}]}
+   :line-item
+   {:indexes [] :foreign-key-constraints [{:name :part-order :foreign-coll :part-order :foreign-key :part-order}]}})
+
+(def meta-model-with-ric-and-selfreference
+  {:type
+   {:indexes []}
+   :order
+   {:indexes []}
+   :part-order
+   {:indexes [] :foreign-key-constraints [
+                                          {:name :type :foreign-coll :type :foreign-key :type}
+                                          {:name :order :foreign-coll :order :foreign-key :order}
+                                          {:name :parent :foreign-coll :part-order :foreign-key :parent}]}
    :line-item
    {:indexes [] :foreign-key-constraints [{:name :part-order :foreign-coll :part-order :foreign-key :part-order}]}})
 
@@ -136,8 +150,11 @@
 
 
 (facts "testing the y-combinator to used build the dependency model"
-       (let [model {:order [:order-type :client] :part-order [:order :article] :article [:client] :client [] :order-type []}]         
-         (fact "reveal proper collection order using the convenience function"
-               (dependency-model-ordered (-> (create-context meta-model-with-ric) deref vals)) => '(:type :order :part-order :line-item))
-         (fact "reveal proper collection order using a model with just one collection"
-               (dependency-model-ordered (-> (create-context {:sys_state {:indexes []}}) deref vals)) => '(:sys_state))))
+       (fact "reveal proper collection order using the convenience function"
+             (dependency-model-ordered (-> (create-context meta-model-with-ric) deref vals)) => '(:type :order :part-order :line-item))
+       (fact "reveal proper collection order using a model with just one collection"
+             (dependency-model-ordered (-> (create-context {:sys_state {:indexes []}}) deref vals)) => '(:sys_state)))
+
+(facts "testing the y-combinator to used build the dependency model - with self references"
+       (fact "reveal proper collection order using the convenience function"
+             (dependency-model-ordered (-> (create-context meta-model-with-ric-and-selfreference) deref vals)) => '(:type :order :part-order :line-item)))

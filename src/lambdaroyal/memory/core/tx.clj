@@ -531,7 +531,8 @@
   "takes a document [user-scope-tuple] from the collection with name [coll-name] and gives back derived document where all foreign keys are replaced by their respective documents."
   [tx coll-name user-scope-tuple & opts]
   {:pre [(contains? (-> tx :context deref) coll-name)]}
-  (let [{use-attr-name :use-attr-name, :or {use-attr-name false}} (if opts (apply hash-map opts) {})]
+  (let [{use-attr-name :use-attr-name, :or {use-attr-name false}} (if opts (try (apply hash-map opts)
+                                                                                (catch Throwable t {})) {})]
     (replace-in-tree tx coll-name user-scope-tuple tree-referencees :cache {} :use-attr-name use-attr-name)))
 
 

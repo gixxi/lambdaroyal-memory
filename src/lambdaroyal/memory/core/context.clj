@@ -277,8 +277,10 @@
   (map 
    (fn [coll]
      (list
-      (:name coll) 
-      (set (map #(.foreign-coll %) (filter #(instance? ReferrerIntegrityConstraint %) (-> coll :constraints deref vals))))))
+      (:name coll)
+      (disj
+       (set (map #(.foreign-coll %) (filter #(instance? ReferrerIntegrityConstraint %) (-> coll :constraints deref vals))))
+       (:name coll))))
    colls))
 
 (defn- partition-dependency-model 
