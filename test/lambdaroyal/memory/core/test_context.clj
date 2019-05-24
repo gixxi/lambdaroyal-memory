@@ -157,4 +157,4 @@
 
 (facts "testing the y-combinator to used build the dependency model - with self references"
        (fact "reveal proper collection order using the convenience function"
-             (dependency-model-ordered (-> (create-context meta-model-with-ric-and-selfreference) deref vals)) => '(:type :order :part-order :line-item)))
+             (dependency-model-ordered (-> (create-context meta-model-with-ric-and-selfreference) deref vals)) => '(:type :order :part-order :line-item))) 

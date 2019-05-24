@@ -419,16 +419,16 @@
           (let [x (insert tx :order 1 {:name :foo})
                 y (insert tx :order 2 {:name :foo2})]
             (fact "*gtid* must not be bound" (bound? #'*gtid*) => falsey)
-            (fact "if no derived dosync is used then the gtid_ must not be set" (contains? (last x) :gtid_) => falsey)
+            (fact "if no derived dosync is used then the gtid_ must not be set" (contains? (last x) :vlicGtid) => falsey)
             (fact "collection does not yet contain gtid" (-> ctx deref :order :gtid deref) => nil?)))
 
          (gtid-dosync
           (let [x (insert tx :order 3 {:name :foo})
                 y (insert tx :order 4 {:name :foo2})
-                gtid' (-> x last :gtid_)]
+                gtid' (-> x last :vlicGtid)]
             (fact "*gtid* must be same with object's gtid" gtid' => *gtid*)
             (fact "*gtid* must not be bound" (bound? #'*gtid*) => true?)
             (fact "collection does contain mru gtid" (-> ctx deref :order :gtid deref) => gtid')
             (let [coll (get @ctx :order)]
               (fact "gtid of collection must match most recently used gtid of object"
-                    (-> coll :gtid deref) => (-> y last :gtid_)))))))
+                    (-> coll :gtid deref) => (-> y last :vlicGtid)))))))

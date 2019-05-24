@@ -247,7 +247,7 @@
        (gtid-dosync
         (insert tx :order 0 {:type :gaga :receiver :foo})
         (let [x (alter-document tx :order (select-first tx :order 0) assoc :type :gogo)]
-          (reset! gtid' (:gtid_ x))
+          (reset! gtid' (:vlicGtid x))
           (println :gtid' @gtid')
           (fact "gtid of object must not be nil" @gtid' => some?)))
        

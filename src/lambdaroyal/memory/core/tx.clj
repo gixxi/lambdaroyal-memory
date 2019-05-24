@@ -13,7 +13,7 @@
 ;;thread-local global transaction id
 (declare  ^{:dynamic true} *gtid*)
 
-(def gtid (atom (System/nanoTime)))
+(def gtid (atom (- (System/currentTimeMillis) (.getTime (.parse (java.text.SimpleDateFormat. "ddMMyyyy") "25052019")))))
 
 ;;this macro sets the gtid for the outermost call
 (defmacro gtid-dosync [& body]
@@ -29,7 +29,7 @@
 
 (defn decorate-with-gtid [val]
   (if (bound? #'*gtid*)
-    (assoc val :gtid_ *gtid*)
+    (assoc val :vlicGtid *gtid*)
     val))
 
 (defn decorate-coll-with-gtid [coll gtid]
@@ -338,7 +338,7 @@
         val (decorate-with-gtid value)
         coll-tuple [key (value-wrapper coll key val)]]
     (do
-      (decorate-coll-with-gtid coll (:gtid_ val))
+      (decorate-coll-with-gtid coll (:vlicGtid val))
       (process-constraints :insert precommit ctx coll key value)
       (alter data assoc key (last coll-tuple))
       (process-constraints :insert postcommit ctx coll coll-tuple)
@@ -389,12 +389,12 @@
         
         new-user-value (let [res (apply alter (last coll-tuple) fn args)]
                          (if-let [gtid' (get-gtid)]
-                           (alter (last coll-tuple) assoc :gtid_ gtid')
+                           (alter (last coll-tuple) assoc :vlicGtid gtid')
                            res))]
     (binding [*alter-context* {:old-user-value old-user-value :new-user-value new-user-value}]
       (do        
         
-        (decorate-coll-with-gtid coll (:gtid_ new-user-value))
+        (decorate-coll-with-gtid coll (:vlicGtid new-user-value))
         ;;check all relevant constraints on the referrer site of the coin
         (doseq [_ constraints]
           (precommit _ ctx coll :update (first user-scope-tuple) new-user-value))
