@@ -76,20 +76,16 @@
      (let [[coll-name constraint] x
            ctx @ctx
            constraints (-> ctx coll-name :constraints)]
-       (if (contains? @constraints (.name constraint)) 
-         (do
-           (println :constraint constraint)
-           (println :constaints-on-collection)
-           (doseq [[k v] @constraints]
-             (println k :constraint v))
-           (throw (IllegalArgumentException. (format "Constraint with name %s already given on collection %s" (.name constraint) coll-name)))))
-       (commute constraints assoc (.name constraint) constraint)
-       ;;update and check indexes
-       (if (contains? (.application constraint) :insert)
-         (doseq [x (-> ctx coll-name :data deref)]
-           (let [[k v] x]
-             (.precommit constraint ctx coll-name :insert k v)
-             (.postcommit constraint ctx coll-name :insert x))))))))
+       (do
+         (if (contains? @constraints (.name constraint)) 
+           (throw (IllegalArgumentException. (format "Constraint with name %s already given on collection %s" (.name constraint) coll-name))))
+         (commute constraints assoc (.name constraint) constraint)
+         ;;update and check indexes
+         (if (contains? (.application constraint) :insert)
+           (doseq [x (-> ctx coll-name :data deref)]
+             (let [[k v] x]
+               (.precommit constraint ctx coll-name :insert k @v)
+               (.postcommit constraint ctx coll-name :insert x)))))))))
 
 (defn remove-ric
   "removes all referential integrity constraints from the context [ctx] that refer the target collection [target] from the source collection [source]. The [foreign-key] within the source collection all the respective RICs need to match"

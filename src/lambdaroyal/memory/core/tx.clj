@@ -534,13 +534,3 @@
   (let [{use-attr-name :use-attr-name, :or {use-attr-name false}} (if opts (try (apply hash-map opts)
                                                                                 (catch Throwable t {})) {})]
     (replace-in-tree tx coll-name user-scope-tuple tree-referencees :cache {} :use-attr-name use-attr-name)))
-
-
-
-
-
-
-
-
-
-
