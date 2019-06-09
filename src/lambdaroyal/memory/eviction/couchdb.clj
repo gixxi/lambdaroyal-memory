@@ -121,7 +121,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
                 (doseq [doc docs]
                   (let [existing (:doc doc)                         
                         user-scope-tuple (dosync
-                                          (insert tx % (:unique-key existing) existing))]
+                                          (insert-raw tx % (:unique-key existing) existing))]
                     (swap! (.revs this) assoc [% (first user-scope-tuple)] (:_rev existing))))
                 (println (format "collection %s contains %d documents" % (count docs))))
              colls)))

@@ -25,12 +25,12 @@
 (defn get-gtid []
   (if (bound? #'*gtid*)
     *gtid*
-    nil))
+    (swap! gtid inc)))
 
 (defn decorate-with-gtid [val]
   (if (bound? #'*gtid*)
     (assoc val :vlicGtid *gtid*)
-    val))
+    (assoc val :vlicGtid (swap! gtid inc))))
 
 (defn decorate-coll-with-gtid [coll gtid]
   (if (some? gtid)
@@ -329,20 +329,25 @@
   [user-scope-tuple]
   (-> user-scope-tuple first))
 
-(defn insert [tx coll-name key value]
+(defn- insert' [tx coll-name key value]
   "inserts a document [value] by key [key] into collection with name [coll-name] using the transaction [tx]. the transaction can be created from context using (create-tx [context])"
   {:pre [(contains? (-> tx :context deref) coll-name)]}
   (let [ctx (-> tx :context deref)
         coll (get ctx coll-name)
         data (:data coll)
-        val (decorate-with-gtid value)
-        coll-tuple [key (value-wrapper coll key val)]]
+        coll-tuple [key (value-wrapper coll key value)]]
     (do
-      (decorate-coll-with-gtid coll (:vlicGtid val))
+      (decorate-coll-with-gtid coll (:vlicGtid value))
       (process-constraints :insert precommit ctx coll key value)
       (alter data assoc key (last coll-tuple))
       (process-constraints :insert postcommit ctx coll coll-tuple)
       (user-scope-tuple coll-tuple))))
+
+(defn insert "inserts a document [value] by key [key] into collection with name [coll-name] using the transaction [tx]. the transaction can be created from context using (create-tx [context])" [tx coll-name key value]
+  (insert' tx coll-name key (decorate-with-gtid value)))
+
+(defn insert-raw "ONLY FOR INTERNAL PURPOSE" [tx coll-name key value]
+  (insert' tx coll-name key value))
 
 
 (defn- alter-index

@@ -18,7 +18,7 @@
          (fact "find-first by user key reveals an element"
                tuple-a-by-user-key => truthy)
          (fact "find-first by user key reveals the proper element"
-               (-> tuple-a-by-user-key user-scope-tuple last) => {:type :test})
+               (dissoc (-> tuple-a-by-user-key user-scope-tuple last) :vlicGtid) => {:type :test})
          (fact "find-first by key reveals an element"
                tuple-a-by-key => truthy)
          (fact "find-first by key reveals the proper element"
@@ -111,7 +111,7 @@
           (doall (repeatedly 1000 #(insert tx :order (alter counter inc) {:orell :meisi :anne :iben})))
           (doall (repeatedly 2 #(insert tx :interaction (alter counter inc) {})))
           (fact "select first on existing must work"
-                (-> (select-first tx :order 500) last) => {:orell :meisi :anne :iben})
+                (dissoc (-> (select-first tx :order 500) last) :vlicGtid) => {:orell :meisi :anne :iben})
           (fact "select all elements must reveal all elements"
                 (count (select tx :order >= -10)) => 1000)
           (fact "select all elements without constraining must reveal all elements"
@@ -311,26 +311,17 @@
 (fact "building the tree referencees for a user-scope-tuple" 
       (time (let [rics (map #(-> % last .name) (referential-integrity-constraint-factory meta-model-with-ric))
                   ctx (create-context meta-model-with-ric)
-                  tx (create-tx ctx)]
-              (do
-                (dosync (insert tx :type 1 {})
+                  tx (create-tx ctx)
+                  _ (dosync (insert tx :type 1 {})
                         (insert tx :order 1 {:name :foo})
                         (insert tx :part-order 1 {:type 1 :order 1 :gaga "baba"}))
-                (tree-referencees tx :part-order (select-first tx :part-order 1))))) 
-      => {[:order 1] [:order [1 {:name :foo}]], [:type 1] [:type [1 {}]]})
-
-
-(fact "building the tree for a user-scope-tuple" 
-      (time (let [rics (map #(-> % last .name) (referential-integrity-constraint-factory meta-model-with-ric))
-                  ctx (create-context meta-model-with-ric)
-                  tx (create-tx ctx)]
-              (do
-                (dosync (insert tx :type 1 {})
-                        (insert tx :order 1 {:name :foo})
-                        (insert tx :part-order 1 {:type 1 :order 1 :gaga "baba"})
-                        (insert tx :line-item 1 {:no 1 :part-order 1}))
-                (tree tx :line-item (select-first tx :line-item 1)))))
-      => [1 {:coll :line-item, :no 1, :part-order [1 {:coll :part-order, :gaga "baba", :order [1 {:coll :order, :name :foo}], :type [1 {:coll :type}]}]}])
+                  part-order (select-first tx :part-order 1)
+                  order (select-first tx :order 1)
+                  type (select-first tx :type 1)]
+              (tree-referencees tx :part-order part-order) 
+              => {[:order 1] 
+                  [:order [1 {:name :foo :vlicGtid (-> order last :vlicGtid)}]]
+                  [:type 1] [:type [1 {:vlicGtid (-> type last :vlicGtid)}]]})))
 
 (fact "building the tree for a user-scope-tuple (old signature)" 
       (time (let [rics (map #(-> % last .name) (referential-integrity-constraint-factory meta-model-with-ric))
@@ -341,33 +332,42 @@
                         (insert tx :order 1 {:name :foo})
                         (insert tx :part-order 1 {:type 1 :order 1 :gaga "baba"})
                         (insert tx :line-item 1 {:no 1 :part-order 1}))
-                (tree tx :line-item (select-first tx :line-item 1) {}))))
-      => [1 {:coll :line-item, :no 1, :part-order [1 {:coll :part-order, :gaga "baba", :order [1 {:coll :order, :name :foo}], :type [1 {:coll :type}]}]}])
+                (tree tx :line-item (select-first tx :line-item 1) {})
+                => [1 {:vlicGtid (-> (select-first tx :line-item 1) last :vlicGtid)
+                       :coll :line-item, :no 1, :part-order [1 {:vlicGtid (-> (select-first tx :part-order 1) last :vlicGtid)
+                                                                :coll :part-order, :gaga "baba", 
+                                                                :order [1 {:vlicGtid (-> (select-first tx :order 1) last :vlicGtid)
+                                                                           :coll :order, :name :foo}], :type [1 {:vlicGtid (-> (select-first tx :type 1) last :vlicGtid)
+                                                                                                                 :coll :type}]}]}]))))
 
 (fact "building the tree for a user-scope-tuple and assoc referencees by attr-name" 
       (time (let [rics (map #(-> % last .name) (referential-integrity-constraint-factory meta-model-with-ric'))
                   ctx (create-context meta-model-with-ric')
-                  tx (create-tx ctx)]
-              (do
-                (dosync (insert tx :type 1 {})
-                        (insert tx :order 1 {:name :foo})
-                        (insert tx :part-order 1 {:type 1 :order 1 :gaga "baba"})
-                        (insert tx :part-order 2 {:type 1 :order 1 :gaga "bobo"})
-                        (insert tx :line-item 1 {:no 1 :part-order-original 1 :part-order-old 2}))
-                (tree tx :line-item (select-first tx :line-item 1) :use-attr-name true))))
-      => [1
-          {:coll :line-item
-           :no 1
-           :part-order-old [2
-                            {:coll :part-order
-                             :gaga "bobo"
-                             :order [1 {:coll :order :name :foo}]
-                             :type [1 {:coll :type}]}]
-           :part-order-original [1
-                                 {:coll :part-order
-                                  :gaga "baba"
-                                  :order [1 {:coll :order :name :foo}]
-                                  :type [1 {:coll :type}]}]}])
+                  tx (create-tx ctx)
+                  type (dosync (insert tx :type 1 {}))
+                  order (dosync (insert tx :order 1 {:name :foo}))
+                  part-order1 (dosync (insert tx :part-order 1 {:type 1 :order 1 :gaga "baba"}))
+                  part-order2 (dosync (insert tx :part-order 2 {:type 1 :order 1 :gaga "bobo"}))
+                  line-item (dosync (insert tx :line-item 1 {:no 1 :part-order-original 1 :part-order-old 2}))
+                  tree (tree tx :line-item (select-first tx :line-item 1) :use-attr-name true)]
+              
+              tree => [1
+                       {:coll :line-item
+                        :vlicGtid (-> line-item last :vlicGtid)
+                        :no 1
+                        :part-order-old [2
+                                         {:coll :part-order
+                                          :vlicGtid (-> part-order2 last :vlicGtid)
+                                          :gaga "bobo"
+                                          :order [1 {:coll :order :name :foo  :vlicGtid (-> order last :vlicGtid)}]
+                                          :type [1 {:coll :type :vlicGtid (-> type last :vlicGtid)}]}]
+                        :part-order-original [1
+                                              {:coll :part-order
+                                               :vlicGtid (-> part-order1 last :vlicGtid)
+                                               :gaga "baba"
+                                               :order [1 {:coll :order :name :foo :vlicGtid (-> order last :vlicGtid)
+                                                          }]
+                                               :type [1 {:coll :type :vlicGtid (-> type last :vlicGtid)}]}]}])))
 
 (facts "facts about adding constraints (RICs) at runtime"
        (let [ctx (create-context meta-model)
@@ -419,8 +419,9 @@
           (let [x (insert tx :order 1 {:name :foo})
                 y (insert tx :order 2 {:name :foo2})]
             (fact "*gtid* must not be bound" (bound? #'*gtid*) => falsey)
-            (fact "if no derived dosync is used then the gtid_ must not be set" (contains? (last x) :vlicGtid) => falsey)
-            (fact "collection does not yet contain gtid" (-> ctx deref :order :gtid deref) => nil?)))
+            (fact "if no derived dosync is used then the gtid_ must be set" (contains? (last x) :vlicGtid) => truthy)
+            (fact "gtid of first inserted object must be below gtid of most recently inserted object" (< (-> x last :vlicGtid) (-> y last :vlicGtid)) => true)
+            (fact "collection must contain gtid that matches the most recently used gtid" (-> ctx deref :order :gtid deref) => (-> y last :vlicGtid))))
 
          (gtid-dosync
           (let [x (insert tx :order 3 {:name :foo})
@@ -432,3 +433,11 @@
             (let [coll (get @ctx :order)]
               (fact "gtid of collection must match most recently used gtid of object"
                     (-> coll :gtid deref) => (-> y last :vlicGtid)))))))
+
+
+
+
+
+
+
+
