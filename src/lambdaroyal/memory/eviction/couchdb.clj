@@ -15,6 +15,21 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
   (:use com.ashafa.clutch.http-client)
   (:import [java.net ConnectException]))
 
+(def flush-idx (atom (- (System/currentTimeMillis) (.getTime (.parse (java.text.SimpleDateFormat. "ddMMyyyy") "11092019")))))
+(def verbose (atom false))
+(def flush-log-format "FL %3s %3s %12d | %30s %-20s %s")
+(defn- log-try [method collection id rev]
+  (if @verbose
+    (let [flush-idx' (swap! flush-idx inc)]
+      (log/info (format flush-log-format method "TRY" flush-idx' (name collection) id (or rev "")))
+      flush-idx')))
+
+(format "g%-12s" "foo")
+
+(defn- log-result [flush-idx' ok method collection id rev]
+  (if @verbose
+    (log/info (format flush-log-format method (if ok "OK" "NOK") flush-idx' (name collection) id (or rev "")))))
+
 (defn- check-couchdb-connection [url]
   (let [_ (log/info (format "try to access couchdb server using url %s" url))
         e (format "Cannot access Couch DB server on %s. Did you start it (probably by sudo /usr/local/etc/init.d/couchdb start" url)]
@@ -45,21 +60,26 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
          (boolean (re-find #"update conflict" body)))))
 
 (defn- put-document 
-  "inserts a document to the couchdb instance referenced by the CouchEvictionChannel [channel]. if a version conflict occurs then this function trys"
+  "inserts a document to the couchdb instance referenced by the CouchEvictionChannel [channel]. if a version conflict occurs then this function trys again"
   [channel coll-name unique-key user-value]
   (let [rev-key [coll-name unique-key]
         rev (get @(:revs channel) rev-key)
         doc (assoc user-value :_id (str unique-key) :unique-key unique-key)
         doc (if rev (assoc doc :_rev rev) doc)
-        put (fn [doc] (try
-                        (let [result (clutch/put-document (get-database channel coll-name) doc)]
-                          (do 
-                            (swap! (.revs channel) assoc rev-key (:_rev result))
-                            true))
-                        (catch Exception e
-                          (if (is-update-conflict e) 
-                            false
-                            (throw e)))))]
+        put (fn [doc] 
+              (let [flush-idx' (log-try "PUT" coll-name unique-key (:_rev doc))]
+                (try
+                  (let [result (clutch/put-document (get-database channel coll-name) doc)]
+                    (do 
+                      (swap! (.revs channel) assoc rev-key (:_rev result))
+                      (log-result flush-idx' true "PUT" coll-name unique-key (:_rev doc))
+                      true))
+                  (catch Exception e
+                    (if (is-update-conflict e) 
+                      false
+                      (do
+                        (log-result flush-idx' false "PUT" coll-name unique-key (:_rev doc))
+                        (throw e)))))))]
     (try
       (loop [doc doc]
         (if-not (put doc)
@@ -75,15 +95,19 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
   "deletes a document from the couchdb"
   [channel coll-name unique-key]
   (let [delete (fn [document]
-                 (try
-                   (do
-                     (clutch/delete-document (get-database channel coll-name) document)
-                     (swap! (.revs channel) dissoc [coll-name unique-key])
-                     true)
-                   (catch Exception e
-                     (if (is-update-conflict e) 
-                       false
-                       (throw e)))))]
+                 (let [flush-idx' (log-try "DEL" coll-name unique-key (:_rev document))]
+                   (try
+                     (do
+                       (clutch/delete-document (get-database channel coll-name) document)
+                       (swap! (.revs channel) dissoc [coll-name unique-key])
+                       (log-result flush-idx' true "DEL" coll-name unique-key (:_rev document))
+                       true)
+                     (catch Exception e
+                       (if (is-update-conflict e) 
+                         false
+                         (do
+                           (log-result flush-idx' false "PUT" coll-name unique-key (:_rev document))
+                           (throw e)))))))]
     (try
       (loop [existing (clutch/get-document (get-database channel coll-name) (str unique-key))]
         (if-not (delete existing)

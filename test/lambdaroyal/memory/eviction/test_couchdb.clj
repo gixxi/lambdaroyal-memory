@@ -11,6 +11,7 @@
            [org.apache.log4j BasicConfigurator]))
 
 (BasicConfigurator/configure)
+(reset! evict-couchdb/verbose false)
 
 (facts "checking state model on the couch db eviction channel"
   (let [meta-model
