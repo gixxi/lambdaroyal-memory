@@ -13,6 +13,27 @@
 (BasicConfigurator/configure)
 (reset! evict-couchdb/verbose false)
 
+(defn start-coll [ctx coll]
+  @(.start (-> @ctx coll :evictor) ctx [(get @ctx coll)]))
+
+(facts "inserting and delete a card within the same tx, check that the card is deleted "
+  (let [evictor (evict-couchdb/create)
+        meta-model
+        {:order {:unique true :indexes [] :evictor evictor :evictor-delay 1000}}
+        ctx (create-context meta-model)
+        _ (clutch/delete-database (evict-couchdb/get-database-url (-> @ctx :order :evictor :url) (name :order)))
+        _ (start-coll ctx :order)
+        tx (create-tx ctx)]
+    
+    ;;read again
+    (try
+      (fact "evictor must implement protocol"
+            (satisfies? evict/EvictionChannelHeartbeat evictor) => true)
+      (fact "evictor must be alive"
+            (.alive? evictor) => true)
+      (finally
+        (.stop (-> @ctx :order :evictor))))))
+
 (facts "checking state model on the couch db eviction channel"
   (let [meta-model
         {:order {:unique true :indexes [] :evictor (evict-couchdb/create) :evictor-delay 10}}
@@ -25,9 +46,6 @@
         ctx (create-context meta-model)
         _ @(.start (-> @ctx :order :evictor) ctx [(:order @ctx)])]
     (fact "cannot start calling user-scope functions until eviction channel is not started" (create-tx ctx) => truthy)))
-
-(defn start-coll [ctx coll]
-  @(.start (-> @ctx coll :evictor) ctx [(get @ctx coll)]))
 
 (defn rics [ctx source target] 
   (let [source-coll (get @ctx source)

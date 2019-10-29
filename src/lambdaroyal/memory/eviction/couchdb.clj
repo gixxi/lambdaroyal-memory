@@ -161,7 +161,13 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
   (delete [this coll-name unique-key old-user-value]
     (if @(.started this) (delete-document this coll-name unique-key)))
   (delete-coll [this coll-name]
-    (if @(.started this) (delete-coll this coll-name))))
+    (if @(.started this) (delete-coll this coll-name)))
+  evict/EvictionChannelHeartbeat
+  (alive? [this] (try
+                   (do
+                     (check-couchdb-connection (.url this))
+                     true)
+                   (catch Exception e false))))
 
 (defn create 
   "provide custom url by calling this function with varargs :url \"https://username:password@account.cloudant.com\""

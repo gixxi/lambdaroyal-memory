@@ -16,6 +16,9 @@
   (delete [this coll-name unique-key old-user-value] "called when a delete took place")
   (delete-coll [this coll-name] "call this to delete the respective collection/db at all"))
 
+(defprotocol EvictionChannelHeartbeat
+  (alive? [this] "returns true iff the eviction channel is up'n running"))
+
 (defrecord EvictionChannelProxy [queue delay stopped eviction-channel]
   EvictionChannel
   (start [this ctx colls] (.start (.eviction-channel this) ctx colls))
