@@ -17,6 +17,10 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
 
 (def flush-idx (atom (- (System/currentTimeMillis) (.getTime (.parse (java.text.SimpleDateFormat. "ddMMyyyy") "11092019")))))
 (def verbose (atom false))
+
+;; change this to true for testing purposes
+(def read-only (atom false))
+
 (def flush-log-format "FL %3s %3s %12d | %30s %-20s %s")
 (defn- log-try [method collection id rev]
   (if @verbose
@@ -32,6 +36,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
 
 (defn- check-couchdb-connection [url]
   (let [_ (log/info (format "try to access couchdb server using url %s" url))
+        _ (if (-> read-only deref true?) (log/info "CouchDB evictor works in READ-ONLY MODE. THIS IS NOT THE PRODUCTION MODE"))
         e (format "Cannot access Couch DB server on %s. Did you start it (probably by sudo /usr/local/etc/init.d/couchdb start" url)]
     (try
       (if-not 
@@ -153,15 +158,17 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
   (started? [this] @(.started this))
   (stopped? [this] nil)
   (insert [this coll-name unique-key user-value]
-    (if @(.started this)
+    (if (and @(.started this) (-> read-only deref false?))
       (put-document this coll-name unique-key user-value)))
   (update [this coll-name unique-key old-user-value new-user-value]
-    (if @(.started this)
+    (if (and @(.started this) (-> read-only deref false?))
       (put-document this coll-name unique-key new-user-value)))
   (delete [this coll-name unique-key old-user-value]
-    (if @(.started this) (delete-document this coll-name unique-key)))
-  (delete-coll [this coll-name]
-    (if @(.started this) (delete-coll this coll-name)))
+    (if (and @(.started this) (-> read-only deref false?))
+      (delete-document this coll-name unique-key)))
+  (delete-coll [this coll-name]    
+    (if (and @(.started this) (-> read-only deref false?))
+      (delete-coll this coll-name)))
   evict/EvictionChannelHeartbeat
   (alive? [this] (try
                    (do
