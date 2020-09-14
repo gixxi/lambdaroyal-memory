@@ -1,7 +1,5 @@
 This Document contains information on several performance unittests that scope the performance of main database functionality over the curse of time.
 
-
-
 # Inserting data
 
 Runtime for inserting 30000 complex documents with several secondary indexes and referential integrity constraints by 10 concurrent actors.

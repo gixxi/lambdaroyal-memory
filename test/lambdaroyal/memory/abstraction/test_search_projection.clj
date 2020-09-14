@@ -74,6 +74,12 @@
            (fact "project on specific ric #1 works" (map #(-> % last :name) proj) => [:justapple]))
          (let [proj (time (proj tx
                                 (filter-key tx :article (first apple))
+                                (>>> :line-item :foreign-key :art1 :verbose true :reverse true)))]
+           
+           (fact "project on specific ric #1 works" (map #(-> % last :name) proj) => [:justapple]))
+
+         (let [proj (time (proj tx
+                                (filter-key tx :article (first apple))
                                 (>>> :line-item :foreign-key :art2 :verbose true)))]
            (fact "project on specific ric #2 works" (map #(-> % last :name) proj) => [:appleandbanana]))
          (let [proj (time (proj tx
@@ -143,6 +149,29 @@
                                 (>>> :part-order)))]
            (fact "type->order->partorder using the pipe" (count proj) => (roughly 100 500))
            (fact "client->order using the pipe for one key" (remove #(if (= % 2) %) (map #(-> % last :client) proj)) => empty))
+
+         (let [_ (println :proj)
+               proj (time (proj tx
+                                (filter-key tx :client 2)
+                                (>>> :order)
+                                (>>> :part-order)))]
+           (loop [xs proj]
+             (if (>= (count xs) 2)
+               (let [[x y] (map first (take 2 xs))]
+                 (fact "projecting on target tupels in ascending order must yield ascending order" (< x y) => truthy)
+                 (recur (drop 2 xs))))))
+
+         (let [_ (println :proj :descending)
+               proj (time (proj tx
+                                (filter-key tx :client 2)
+                                (>>> :order)
+                                (>>> :part-order :reverse true)))]
+           (loop [xs proj]
+             (if (>= (count xs) 2)
+               (let [[x y] (map first (take 2 xs))]
+                 (fact "projecting on target tupels in ascending order must yield ascending order" (> x y) => truthy)
+                 (recur (drop 2 xs))))))
+
 
          ;;some speed test
          (let [[t _] (timed (apply + (map count 
