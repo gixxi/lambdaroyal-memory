@@ -317,6 +317,23 @@
                               res)))))))
      {:coll-name target})))
 
+(defn by-referencees
+  "returns all user scope tuples from collection [target] that are referenced to collection [target] by some ReferencedIntegrityConstraint and have primary key as per the foreign keys within xs. the sequence is supposed to be redundancy free (set)."
+  ([tx source target xs & opts]
+   (with-meta 
+     (let [opts (if opts (apply hash-map opts))
+           {foreign-key :foreign-key verbose :verbose parallel :parallel, :or {parallel true verbose false}} opts
+           ric (or (if foreign-key 
+                     (ric tx source target foreign-key) (ric tx source target)) 
+                   (throw (IllegalStateException. (str "[by-referencees] Failed to build data projection - no ReferrerIntegrityConstraint from collection " source " to collection " target " defined."))))
+           _ (if verbose (println (format "[by-referencees] to collection %s -> %s  -> %s " source (.foreign-key ric) target)))]
+       (distinct (filter some? ((if parallel pmap map) 
+                                (fn [x]
+                                  (let [fk (get (last x) (.foreign-key ric))]
+                                    (tx/select-first tx target fk)))
+                                xs))))
+     {:coll-name target})))
+
 (defn >>
   "Pipe, Convenience Function. A higher order function that returns a function taking a transaction [tx] and a set of user scope tupels into account that MUST aggregate as meta data key :coll-name the collection the tupels belong to, the lambda returns itself a by-ric from source collection as per the input xs to target location. The filter is applied to the xs. If the :foreign-key is given within the opts then we explicitly seach for a ric with a certain foreign-key. opts can also contain :reverse true to yield the tupels of the target collection in reverse order"
   [target filter-fn & opts]
@@ -326,10 +343,28 @@
                        (apply by-ric tx target (-> xs meta :coll-name) (map first xs) opts))
       {:coll-name target})))
 
+(defn << "Reverse Pipe. Returns all tupels from target that match the keys."
+  [target filter-fn & opts]
+  (fn [tx xs]
+    {:pre [(-> xs meta :coll-name)]}
+    (with-meta (filter filter-fn
+                       (apply by-referencees 
+                              tx
+                              (-> xs meta :coll-name)
+                              target
+                              xs
+                              opts))
+      {:coll-name target})))
+
 (defn >>>
   "Pipe, Convenience Function. A higher order function that returns a function taking a transaction [tx] and a set of user scope tupels into account that MUST aggregate as meta data key :coll-name the collection the tupels belong to, the lambda returns itself a by-ric from source collection as per the input xs to target location. If the :foreign-key is given within the opts then we explicitly seach for a ric with a certain foreign-key."
   [target & opts]
   (apply >> target (fn [x] true) opts))
+
+(defn <<<
+  "Pipe, Convenience Function. Returns all tupels from target that match the keys."
+  [target & opts]
+  (apply << target (fn [x] true) opts))
 
 (defn filter-all
   "higher order function that returns a function that returns a sequence of all tuples within the collection with name [coll-name]"

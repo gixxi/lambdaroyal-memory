@@ -27,12 +27,49 @@
    :type {:indexes []}
    :article {}
    :line-item {:foreign-key-constraints [{:foreign-coll :article :foreign-key :art1}
-                                         {:foreign-coll :article :foreign-key :art2 :unique true}]}
+                                         {:foreign-coll :article :foreign-key :art2}]}
    :order {:indexes [{:unique true :attributes [:name]}]
            :foreign-key-constraints [{:foreign-coll :client :foreign-key :client}]}
    :part-order {:indexes [] 
                 :foreign-key-constraints [{:name :type :foreign-coll :type :foreign-key :type}
                                           {:name :order :foreign-coll :order :foreign-key :order}]}})
+
+
+
+(let [articles '(:apple :banana :avocado)        
+             ctx (create-context meta-model)
+             tx (create-tx ctx)
+             bulk (timed (dosync
+                          (doseq [[k v] (zipmap (range) articles)]
+                            (insert tx :article k {:name v}))
+                          (let [apple (select-first tx :article 0)
+                                banana (select-first tx :article 1)
+                                avocado (select-first tx :article 2)
+                                line-items [{:name :justapple :art1 (first apple) :art2 (first avocado)}
+                                            {:name :justbanana :art1 (first banana) :art2 (first banana)}
+                                            {:name :appleandbanana :art1 (first banana) :art2 (first apple)}]]
+                            (doseq [[k v] (zipmap (range) line-items)]
+                              (insert tx :line-item k v))
+                            (doseq [[k v] (zipmap (range (count line-items) (* 2 (count line-items))) line-items)]
+                              (insert tx :line-item k v)))))
+             _ (println "insert took (ms) " (first bulk))
+             apple (select-first tx :article 0)
+             banana (select-first tx :article 1)
+             avocado (select-first tx :article 2)]
+         
+
+         (let [apple-line-items (take 2 (filter #(= (first apple) (-> % last :art1)) (select tx :line-item)))
+               _ (doseq [x apple-line-items] (println x))
+               banana-line-items (take 3 (filter #(= (first banana) (-> % last :art1)) (select tx :line-item)))
+               _ (doseq [x banana-line-items] (println x))
+               xs (concat banana-line-items apple-line-items)
+               proj (by-referencees tx :line-item :article xs :verbose true)
+               proj' (proj tx (filter-xs :line-item xs)
+                           (<<< :article :verbose true))]
+           (fact "by-referenees returns distinct referenced cards of article master-data " proj => [banana apple])
+           (fact "<< returns distinct referenced cards of article master-data " proj' => [banana apple])
+           proj))
+
 
 (facts "check whether projections on non-unique collection associations (collection a referres collection b by two distinct rics"
        (let [articles '(:apple :banana :avocado)        
@@ -65,6 +102,17 @@
            (fact "ric is present by specific foreign-key" ric =>  falsey))
          (let [proj (by-ric tx :line-item :article [(first apple)] :foreign-key :art1 :verbose true)]
            (fact "specific ric must reveal correct number of items" (count proj) => 1))
+
+         (let [apple-line-items (take 2 (filter #(= (first apple) (-> % last :article)) (select tx :line-item)))
+               banana-line-items (take 3 (filter #(= (first apple) (-> % last :article)) (select tx :line-item)))
+               proj (by-referencees tx :line-item :article (concat banana-line-items apple-line-items) :verbose true)
+               proj' (proj tx (filter-xs :line-item (concat apple-line-items banana-line-items))
+                           (<<< :article :verbose true))]
+           (fact "by-reference must reveal a set of articles without redundancies"
+                 proj => [banana apple])
+           (fact "<<< must reveal a set of articles without redundancies"
+                 proj' => [banana apple]))
+
          (let [proj (by-ric tx :line-item :article [(first apple) (first banana)] :foreign-key :art1 :verbose true)]
            (fact "specific ric must reveal correct number of items" (count proj) => 3))
          ;;now the more handsome version
