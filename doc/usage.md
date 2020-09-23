@@ -94,6 +94,14 @@ define a range over the the document keys or the value of an indexed attribute s
   (select tx :part-order >= 0 < 2))
 ```
 
+or yielding the tupels in reverse order
+
+```clojure
+(dosync
+  (rselect tx :part-order >= 0 < 2))
+```
+
+
 Turns out to return the first part-order instance, since the second one with *key = 2* fails to match the *key* range 0 <= x < 2.
 
 ```clojure
@@ -101,7 +109,25 @@ Turns out to return the first part-order instance, since the second one with *ke
   (select tx :part-order >= 0))
 ```
 
+or yielding the tupels in reverse order
+
+```clojure
+(dosync
+  (rselect tx :part-order >= 0))
+```
+
 This just returns all part-order instances.
+
+```clojure
+(select tx :part-order)
+```
+
+or yielding the tupels in reverse order
+
+```clojure
+(rselect tx :part-order)
+```
+
 
 ### Selecting by *indexed attribute set*
 
@@ -110,6 +136,13 @@ Indexed are defined over tuples of entity type attributes. One can manually deco
 ```clojure
 (dosync
   (select tx :part-order [:type] >= [1]))
+```
+
+or yielding the tupels in reverse order
+
+```clojure
+(dosync
+  (rselect tx :part-order [:type] >= [1]))
 ```
 
 This returns all part-order instances that refer the type instance with key 1 in logarithmic time with respect to the number of part-orders stored in the db. The oddy wrapping of the *:type* keyword into a vector is due to the fact that indexes are defined on *attribute sets* rather than one single attributes.
@@ -134,6 +167,14 @@ Select using this indexed attribute set to get all *order* documents that have *
 (dosync
   (select tx :order [:client :number] >= [1 2] < [1 4]))
 ```
+
+or without relying on the assumption that *4* follows *3*
+
+```clojure
+(dosync
+  (select tx :order [:client :number] >= [1 2] = [1 3]))
+```
+
 
 ## Deleting a document
 
@@ -329,7 +370,8 @@ Here _opts_ can contain
 * *:parallel* iff true (default) then all the index lookups as per individual input user tupels are performed concurrently
 * *:verbose* iff true then one get statistics information on projection internals like full-scan vs. recurring index seeks as well as size of the target collection
 * *:foreign-key* iff given and multiple RICs associate collection a to collection b, then this key uniquely denotes the RIC to take into account for the projection
-  
+* *:reverse* iff true the the tupels of the target collection are returned in reversed order as per [A,B] where A is the order of the source tupels that yield a set of target tupels and B is the order of the target tupel as per its primary key  
+
 # Getting Data Hierarchies
 
 ## Background

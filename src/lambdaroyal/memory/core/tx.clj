@@ -150,7 +150,6 @@
   (application [this] "returns a set of database actions this constraint type is relevant for"))
 
 (defprotocol Index
-  ""
   (find [this start-test start-key stop-test stop-key]
     "takes all values from the collection using this index that fulfil (start-test start-key) until the collection is fully realized or (stop-test stop-key) is fulfilled. start-test as well as stop-test are of >,>=,<,<=. The returning sequence contains of items [[uk i] (ref v)], where uk is the user-key, i is the running index for the collection and (ref v) denotes a STM reference type instance to the value v")
   (find-without-stop [this start-test start-key]
@@ -159,6 +158,12 @@
     "return true iff this index can be used to find values as per the given key.")
   (rating [this key]
     "returns a natural number denoting an order by which two indexes can be compared in order to use one for a finding a certain key. the index with the lower rating result wins"))
+
+(defprotocol ReverseIndex
+  (rfind [this start-test start-key stop-test stop-key]
+    "takes all values from the collection using this index that fulfil (start-test start-key) until the collection is fully realized or (stop-test stop-key) is fulfilled. start-test as well as stop-test are of >,>=,<,<=. The returning sequence contains of items [[uk i] (ref v)], where uk is the user-key, i is the running index for the collection and (ref v) denotes a STM reference type instance to the value v. yields reverse order")
+  (rfind-without-stop [this start-test start-key]
+    "takes all values from the collection using this index that fulfil (start-test start-key) until the collection is fully realized. start-test is of >,>=,<,<=. The returning sequence contains of items [[uk i] (ref v)], where uk is the user-key, i is the running index for the collection and (ref v) denotes a STM reference type instance to the value v. yields reverse order"))
 
 (defn- attribute-values 
   "returns a vector of all attribute values as per the attributes [attributes] for the value within coll-tuple <- [[k i] (ref value)]"
@@ -171,6 +176,7 @@
     (= (type start-test) (type >=)) (create-unique-key key)
     (= (type start-test) (type <=)) (create-unique-stop-key key) 
     (= (type start-test) (type <)) (create-unique-key key)
+    (= (type start-test) (type =)) (create-unique-stop-key key)
     :else (throw (IllegalArgumentException. (str "cannot use comparator " start-test " as argument to create a match-key")))))
 
 (deftype
@@ -196,6 +202,21 @@
                                  (map list (.attributes this) key))))))
   (rating [this key]
     (count attributes))
+
+  ;; BREAKING CHANGE - 20200914 Support for reverse order secondary index scans
+  ReverseIndex
+  (rfind [this start-test start-key stop-test stop-key]
+    (let [this (.this this)
+          start-key (create-unique-key-for-comp start-test start-key)
+          stop-key (create-unique-key-for-comp stop-test stop-key)
+          data (-> this :data deref)]
+      (map last (rsubseq (-> this :data deref) start-test start-key stop-test stop-key))))
+  (rfind-without-stop [this start-test start-key]
+    (let [this (.this this)
+          start-key (create-unique-key-for-comp start-test start-key)]
+      (map last (rsubseq (-> this :data deref) start-test start-key))))
+
+
   Constraint
   (application [this] #{:insert :delete})
   (precommit [this ctx coll application key value]
@@ -245,7 +266,7 @@
   [tx coll key]
   (applicable-indexes (get (-> tx :context deref) coll) key))
 
-(defn select-from-coll 
+(defn select-from-coll "Secondary index scan"
   ([coll attributes start-test start-key stop-test stop-key]
    (let [indexes (applicable-indexes coll attributes)]
      (if-let [index (first indexes)]
@@ -255,6 +276,18 @@
    (let [indexes (applicable-indexes coll attributes)]
      (if-let [index (first indexes)]
        (.find-without-stop index start-test start-key)
+       (throw (create-no-applicable-index-exception coll attributes))))))
+
+(defn rselect-from-coll "Secondary index scan in reverse order"
+  ([coll attributes start-test start-key stop-test stop-key]
+   (let [indexes (applicable-indexes coll attributes)]
+     (if-let [index (first indexes)]
+       (.rfind index start-test start-key stop-test stop-key)
+       (throw (create-no-applicable-index-exception coll attributes)))))
+  ([coll attributes start-test start-key]
+   (let [indexes (applicable-indexes coll attributes)]
+     (if-let [index (first indexes)]
+       (.rfind-without-stop index start-test start-key)
        (throw (create-no-applicable-index-exception coll attributes))))))
 
 
@@ -451,16 +484,16 @@
   "test(s) one of <, <=, > or
   >=. Returns a seq of those entries [key, value] with keys ek for
   which (test (.. sc comparator (compare ek key)) 0) is true. iff just [tx] and coll-name are given, then we return all tupels."
-  ([tx coll-name]
+  ([tx coll-name] ;; full table scan
    {:pre [(contains? (-> tx :context deref) coll-name)]}
    (let [all (-> (get  (-> tx :context deref) coll-name) :data deref)]
      (map user-scope-tuple all)))
-  ([tx coll-name start-test start-key]
+  ([tx coll-name start-test start-key] ;; forward index scan
    {:pre [(contains? (-> tx :context deref) coll-name)]}
    (let [sub (subseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test start-key)]
      (map user-scope-tuple sub)))
 
-  ([tx coll-name start-test start-key stop-test stop-key]
+  ([tx coll-name start-test start-key stop-test stop-key] ;; forward index scan with stop condition
    {:pre [(contains? (-> tx :context deref) coll-name)]}
    (let [sub (subseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test start-key stop-test stop-key)]
      (map user-scope-tuple sub)))
@@ -473,6 +506,39 @@
    {:pre [(contains? (-> tx :context deref) coll-name)]}
    (let [coll (get (-> tx :context deref) coll-name)]
      (map user-scope-tuple (select-from-coll coll attributes start-test start-key)))))
+
+(defn rselect
+  "REVERSE ORDER SELECT. test(s) one of <, <=, > or
+  >=. Returns a seq of those entries [key, value] with keys ek for
+  which (test (.. sc comparator (compare ek key)) 0) is true. iff just [tx] and coll-name are given, then we return all tupels starting from the highest rank to the lowest rank"
+
+  ;; full table scan
+  ([tx coll-name]
+   {:pre [(contains? (-> tx :context deref) coll-name)]}
+   (let [all (-> (get  (-> tx :context deref) coll-name) :data deref)]
+     (map user-scope-tuple (rseq all))))
+
+  ;; forward primary index scan
+  ([tx coll-name start-test start-key]
+   {:pre [(contains? (-> tx :context deref) coll-name)]}
+   (let [sub (rsubseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test start-key)]
+     (map user-scope-tuple sub)))
+
+  ;; forward primary index scan with stop condition
+  ([tx coll-name start-test start-key stop-test stop-key]
+   {:pre [(contains? (-> tx :context deref) coll-name)]}
+   (let [sub (rsubseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test start-key stop-test stop-key)]
+     (map user-scope-tuple sub)))
+
+  ([tx coll-name attributes start-test start-key stop-test stop-key]
+   {:pre [(contains? (-> tx :context deref) coll-name)]}
+   (let [coll (get (-> tx :context deref) coll-name)]
+     (map user-scope-tuple (rselect-from-coll coll attributes start-test start-key stop-test stop-key))))
+  ([tx coll-name attributes start-test start-key]
+   {:pre [(contains? (-> tx :context deref) coll-name)]}
+   (let [coll (get (-> tx :context deref) coll-name)]
+     (map user-scope-tuple (rselect-from-coll coll attributes start-test start-key)))))
+
 
 (defn tree-referencees
   "takes a document [user-scope-tuple] from the collection with name [coll-name] and gives back a hash-map denoting all foreign-key referenced documents. The key in hash-map is [coll-name user-scope-key]."
