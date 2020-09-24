@@ -66,12 +66,21 @@
                proj''' (search/proj tx (search/filter-xs :line-item xs)
                                   (search/<<< :article :foreign-key :art2 :verbose true)
                                   (search/>>> :stock :verbose true))
+               proj'''' (search/proj tx (search/filter-xs :line-item xs)
+                                  (search/<<< :article :foreign-key :art2 :verbose true)
+                                  (search/>>> :stock :verbose true :reverse true))
+               proj''''' (search/proj tx (search/filter-xs :line-item xs)
+                           (search/<<< :article :verbose true :reverse true))
                expected (take-while #(= (first avocado) (-> % last :art)) (select tx :stock [:art] >= [(first avocado)]))
                _ (doseq [x proj''']
                    (println :xεproj''' x))
+               _ (doseq [x proj'''']
+                   (println :xεproj'''' x))
                _ (doseq [x expected]
                    (println :xεexpected x))]
            (fact "by-referenees returns distinct referenced cards of article master-data " proj => [banana apple])
            (fact "<<< returns distinct referenced cards of article master-data " proj' => [banana apple])
+           (fact "<<< :reverse true returns distinct referenced cards of article master-data " proj''''' => [banana apple])
            (fact "<<< on alternative foreign-key returns distinct referenced cards of article master-data " proj'' => [banana apple avocado])
-           (fact "<<< :article followed by >>> :stock reveals stock " proj''' => (sort-by first expected))))
+           (fact "<<< :article followed by >>> :stock reveals stock " proj''' => (sort-by first expected))
+           (fact "<<< :article followed by >>> :stock :reverse true reveals reversed stock " proj'''' => (reverse (sort-by first expected)))))

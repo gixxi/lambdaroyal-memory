@@ -279,7 +279,7 @@
   ([tx source target keys & opts]
    (with-meta 
      (let [opts (if opts (apply hash-map opts))
-           {foreign-key :foreign-key verbose :verbose parallel :parallel, ratio-full-scan :ratio-full-scan abs-full-scan :abs-full-scan reverse :reverse, :or {parallel true ratio-full-scan 0.2 verbose false abs-full-scan 512 reverse false}} opts
+           {foreign-key :foreign-key verbose :verbose parallel :parallel, ratio-full-scan :ratio-full-scan abs-full-scan :abs-full-scan reverse' :reverse, :or {parallel true ratio-full-scan 0.2 verbose false abs-full-scan 512 reverse' false}} opts
            ric (or (if foreign-key 
                      (ric tx source target foreign-key) (ric tx source target)) 
                    (throw (IllegalStateException. (str "Failed to build data projection - no ReferrerIntegrityConstraint from collection " source " to collection " target " defined."))))
@@ -298,23 +298,26 @@
          (if full-scan
            ;;in full-scan mode we just build a set of the keys provided and filter
            (let [keys (into #{} keys)
-                 xs ((if-not reverse tx/select tx/rselect) tx source)]
+                 xs ((if-not reverse' tx/select tx/rselect) tx source)]
              (filter #(contains? keys (get (last %) (.foreign-key ric))) xs))
            (let [find-fn (fn [key]
                            (take-while  
                             #(= key (get (last %) (.foreign-key ric)))
                             (map tx/user-scope-tuple
-                                 ((if-not reverse tx/select-from-coll tx/rselect-from-coll) 
+                                 ((if-not reverse' tx/select-from-coll tx/rselect-from-coll) 
                                   source-coll 
                                   [(.foreign-key ric)]
                                   >= 
                                   [key]))))
                  ;;one seq with the results for each key
-                 xs ((if parallel pmap map) find-fn keys)]
-             (persistent! (loop [res (transient []) xs (filter #(-> % empty? not) xs)]
-                            (if-let [xs' (first xs)]
-                              (recur (reduce conj! res xs') (rest xs))
-                              res)))))))
+                 xs ((if parallel pmap map) find-fn keys)
+                 result (persistent! (loop [res (transient []) xs (filter #(-> % empty? not) xs)]
+                                       (if-let [xs' (first xs)]
+                                         (recur (reduce conj! res xs') (rest xs))
+                                         res)))]
+             (if (and reverse' (> (count xs) 1))
+               (reverse (sort-by first result))
+               result)))))
      {:coll-name target})))
 
 (defn by-referencees
@@ -322,16 +325,17 @@
   ([tx source target xs & opts]
    (with-meta 
      (let [opts (if opts (apply hash-map opts))
-           {foreign-key :foreign-key verbose :verbose parallel :parallel, :or {parallel true verbose false}} opts
+           {foreign-key :foreign-key verbose :verbose parallel :parallel reverse' :reverse, :or {parallel true verbose false reverse' false}} opts
            ric (or (if foreign-key 
                      (ric tx source target foreign-key) (ric tx source target)) 
                    (throw (IllegalStateException. (str "[by-referencees] Failed to build data projection - no ReferrerIntegrityConstraint from collection " source " to collection " target " defined."))))
-           _ (if verbose (println (format "[by-referencees] to collection %s -> %s  -> %s " source (.foreign-key ric) target)))]
-       (distinct (filter some? ((if parallel pmap map) 
+           _ (if verbose (println (format "[by-referencees] to collection %s -> %s  -> %s " source (.foreign-key ric) target)))
+           res (distinct (filter some? ((if parallel pmap map) 
                                 (fn [x]
                                   (let [fk (get (last x) (.foreign-key ric))]
                                     (tx/select-first tx target fk)))
-                                xs))))
+                                xs)))]
+       (if reverse' (reverse (sort-by first res)) res))
      {:coll-name target})))
 
 (defn >>
