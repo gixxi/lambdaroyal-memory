@@ -1,5 +1,7 @@
 (ns lambdaroyal.memory.helper
-  (:require [clojure.tools.logging :as log])
+  
+  (:require [clojure.tools.logging :as log]
+            [monger.collection :as mc])
   (:gen-class))
 
 (def log-count (atom 0))
@@ -35,7 +37,14 @@
            ~_ (log/info (format "[STOP %d (ms) %f] %s" ~c (first ~t) ~msg))]
        (last ~t))))
 
-
+(defn check-for-existence [db coll attr value timeout]
+  (let [start-time (System/currentTimeMillis)]
+       (loop []
+         (if-let [doc (first (mc/find-maps db coll {attr value}))]
+           doc
+           (if (>= (- (System/currentTimeMillis)  start-time) timeout)
+             (throw (IllegalStateException. "Too slow"))
+             (recur))))))
 
 
 

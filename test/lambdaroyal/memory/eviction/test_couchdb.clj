@@ -80,6 +80,7 @@
         ;; insert a collection dynamically
         (let [new-collection (add-collection ctx  {:name :part-order :evictor (-> @ctx :order :evictor) :evictor-delay 1000
                                                    :foreign-key-constraints [{:name :order :foreign-coll :order :foreign-key :order}]})]
+          (println :ctx (second (first @ctx)))
           (start-coll ctx :part-order))
         _ (let [new-collection (add-collection ctx  {:name :line-item :evictor (-> @ctx :order :evictor) :evictor-delay 1000
                                                      :foreign-key-constraints [{:name :part-order :foreign-coll :part-order :foreign-key :part-order}]})]

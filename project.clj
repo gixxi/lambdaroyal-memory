@@ -19,7 +19,8 @@
                   :exclusions [javax.mail/mail
                              javax.jms/jms
                              com.sun.jdmk/jmxtools
-                             com.sun.jmx/jmxri]]]
+                             com.sun.jmx/jmxri]]
+                 [com.novemberain/monger "3.1.0"]]
   :profiles {:dev {:dependencies [[midje "1.9.2"]]
                    :plugins [[lein-midje "3.2.1"]]}}
   :aot [lambdaroyal.memory.core lambdaroyal.memory.eviction.core lambdaroyal.memory.helper])

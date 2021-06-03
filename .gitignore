@@ -11,3 +11,9 @@ pom.xml.asc
 .lein-failures
 *.xlsx#
 *.csv#
+/*.iml
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/misc.xml
+.lsp/sqlite.db
+.calva/

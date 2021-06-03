@@ -86,7 +86,8 @@
               (-> ref meta :deleted) 
               (evict/delete evictor coll-name unique-key old)
               (nil? old) (evict/insert evictor coll-name unique-key new)
-              :else (evict/update evictor coll-name unique-key old new))))))))
+              :else (evict/update evictor coll-name unique-key old new))
+            (println :finished)))))))
 
 (defn- value-wrapper
   "takes a value [user-value] to be stored into the database and returns a respective STM ref with meta-data attached used for reverse index key handling. this map denotes key/value pairs, where key is the name of a index refering the inserted user-value as well as value denotes the key within this very index"
@@ -430,8 +431,7 @@
                            (alter (last coll-tuple) assoc :vlicGtid gtid')
                            res))]
     (binding [*alter-context* {:old-user-value old-user-value :new-user-value new-user-value}]
-      (do        
-        
+      (do
         (decorate-coll-with-gtid coll (:vlicGtid new-user-value))
         ;;check all relevant constraints on the referrer site of the coin
         (doseq [_ constraints]

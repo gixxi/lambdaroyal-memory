@@ -17,7 +17,7 @@
   (delete-coll [this coll-name] "call this to delete the respective collection/db at all"))
 
 (defprotocol EvictionChannelHeartbeat
-  (alive? [this] "returns true iff the eviction channel is up'n running"))
+  (alive? [this] "returns true if the eviction channel is up'n running"))
 
 (defrecord EvictionChannelProxy [queue delay stopped eviction-channel]
   EvictionChannel
