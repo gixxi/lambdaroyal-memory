@@ -11,9 +11,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
             [clojure.java.io :as io]
             [clojure.tools.logging :as log]
             [clj-http.client :as client]
-            [clojure.set :refer [union]]
-            [com.ashafa.clutch :as clutch]
-            [com.ashafa.clutch.utils :as utils])
+            [clojure.set :refer [union]])
   (:import [java.net ConnectException]))
 
 (def flush-idx (atom (- (System/currentTimeMillis) (.getTime (.parse (java.text.SimpleDateFormat. "ddMMyyyy") "11092019")))))
@@ -57,15 +55,11 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
     (println :put-document coll-name unique-key user-value))
   (mc/insert db coll-name (assoc user-value :_id unique-key)))
 
-;; (defn- is-update-conflict [e]
-;;   (and (instance? clojure.lang.ExceptionInfo e)
-;;        (if-let [body (-> e ex-data :body)]
-;;          (boolean (re-find #"update conflict" body)))))
-
 (defn- update-document [this coll-name unique-key user-value db]
   (if @verbose
     (println :update-document coll-name unique-key user-value))
-  (mc/update-by-id db coll-name unique-key user-value))
+  ;;(mc/update-by-id db coll-name unique-key user-value)
+  )
 
 (defn- delete-document
   [channel coll-name unique-key db]
@@ -109,19 +103,16 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
                                                     (insert-raw tx coll (:_id existing) existing))]))
                           (println (format "collection %s contains %d documents" coll (count docs)))))
              colls)))
+          (println :type (-> this .started type))
           (reset! (.started this) true)))))
   (started? [this] @(.started this))
   (stopped? [this] nil)
   (insert [this coll-name unique-key user-value]
-    (put-document this coll-name unique-key user-value (:db @db-ctx)))
+          (put-document this coll-name unique-key user-value (:db @db-ctx)))
   (stop [this] (mg/disconnect (:conn @db-ctx)))
   (update [this coll-name unique-key old-user-value new-user-value]
     (if (and @(.started this) (-> read-only deref false?))
-      (do
-        ;; (if (-> new-user-value :sleep some?)
-        ;;   (do
-        ;;     (Thread/sleep 5000)))
-        (update-document this coll-name unique-key new-user-value (:db @db-ctx)))))
+      (update-document this coll-name unique-key new-user-value (:db @db-ctx))))
   (delete [this coll-name unique-key old-user-value]
     (if (and @(.started this) (-> read-only deref false?))
       (delete-document this coll-name unique-key (:db @db-ctx))))
@@ -137,8 +128,9 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
 (defn create
   "provide custom url by calling this function with varargs :url \"https://username:password@account.cloudant.com\""
   [& args]
+  (doseq [arg args] (println :create-args arg (type arg)))
   (let [args (if args (apply hash-map args) {})
-        {:keys [url db-name] :or {url (get-database-url (System/getProperty "mongodb-preurl") (System/getProperty "mongodb-username") (System/getProperty "mongodb-password") (System/getProperty "mongodb-posturl")) db-name "test"}} args
+        {:keys [url db-name] :or {url (get-database-url (System/getProperty "mongodb_preurl") (System/getProperty "mongodb_username") (System/getProperty "mongodb_password") (System/getProperty "mongodb_posturl")) db-name (System/getProperty "mongodb_dbname")}} args
         conn (get-connection url)
         _ (check-mongodb-connection url (get-database db-name conn))]
     (MongoEvictionChannel. url db-name (atom {}) (or (:started args) (atom false)))))

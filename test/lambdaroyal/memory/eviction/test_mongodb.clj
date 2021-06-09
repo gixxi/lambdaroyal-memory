@@ -27,10 +27,10 @@
               #(instance? ReferrerIntegrityConstraint %) constraints)]
     (some #(if (= (.foreign-coll %) target) %) rics)))
 
-(defn append-to-timeseries [name & values]
+(defn append-to-timeseries [prefix name & values]
   (if (not= "false" (System/getenv "lambdaroyal.memory.traceteststats.disable"))
     (let [dir (or (System/getenv "lambdaroyal.memory.traceteststats.dir") "test/stats/")
-          filename (str dir name ".dat")
+          filename (str dir prefix "-" name ".dat")
           format (SimpleDateFormat. "yyyy-MM-dd HH:mm:ss")]
       (with-open [w (clojure.java.io/writer filename :append true)]
         (.write w (apply str (.format format (new java.util.Date)) \; values))
@@ -71,10 +71,10 @@
              (dosync
               (insert tx :order 123456 {:type :gaga :receiver :foo :run 123456}))
              (Thread/sleep 2000)
-             (doseq [r (range 100)]
+             (doseq [r (range 10)]
                (dosync
                 (alter-document tx :order (select-first tx :order 123456) assoc :run r)))
-             (check-for-existence db :order :run 99 5000))
+             (check-for-existence db :order :run 9 5000))
            (finally
              (println :finish)
              (.stop (-> @ctx :order :evictor))))))
@@ -96,28 +96,7 @@
                  (insert tx :order r {:type :gaga :receiver :foo :run r})))
             result (timed (dosync (doseq [r (range 1000)]
                                     (alter-document tx :order (select-first tx :order r) assoc :type (str "gaga-" r)))))]
-        (append-to-timeseries "Test" (first result))))
-    (finally
-      (println :finish)
-      (.stop (-> @ctx :order :evictor)))))
-
-(let [evictor (evict-mongodb/create)
-      meta-model
-      {:order {:unique true :indexes [] :evictor evictor :evictor-delay 1000}}
-      ctx (create-context meta-model)
-      conn (evict-mongodb/get-connection (-> @ctx :order :evictor :eviction-channel :url))
-      db (evict-mongodb/get-database (-> @ctx :order :evictor :eviction-channel :db-name) conn)
-      _ (mc/remove db :order)
-      _ (start-coll ctx :order)
-      tx (create-tx ctx)]
-  (try
-    (do
-      (let [_ (dosync
-               (doseq [r (range 1000)]
-                 (insert tx :order r {:type :gaga :receiver :foo :run r})))
-            result (timed (dosync (doseq [r (range 1000)]
-                                    (alter-document tx :order (select-first tx :order r) assoc :type (str "gaga-" r)))))]
-        (append-to-timeseries "Test" (first result))))
+        (append-to-timeseries (System/getProperty "perftest-username") "Test" (first result))))
     (finally
       (println :finish)
       (.stop (-> @ctx :order :evictor)))))
@@ -151,10 +130,44 @@
       (println :finish)
       (.stop (-> @ctx :order :evictor)))))
 
+;; Update 100 records once, do it in 5 transactions
+(let [evictor (evict-mongodb/create)
+      meta-model
+      {:order {:unique true :indexes [] :evictor evictor :evictor-delay 1000}}
+      ctx (create-context meta-model)
+      conn (evict-mongodb/get-connection (-> @ctx :order :evictor :eviction-channel :url))
+      db (evict-mongodb/get-database (-> @ctx :order :evictor :eviction-channel :db-name) conn)
+      _ (mc/remove db :order)
+      _ (start-coll ctx :order)
+      tx (create-tx ctx)]
+  (try
+    (do
+      (let [_ (dosync
+               (doseq [r (range 100)]
+                 (insert tx :order r {:type :gaga :receiver :foo :run r})))
+            _ (dosync
+               (doseq [r (range 0 20)]
+                 (alter-document tx :order (select-first tx :order r) assoc :type (str "update" r))))
+            _ (dosync
+               (doseq [r (range 20 40)]
+                 (alter-document tx :order (select-first tx :order r) assoc :type (str "update" r))))
+            _ (dosync
+               (doseq [r (range 40 60)]
+                 (alter-document tx :order (select-first tx :order r) assoc :type (str "update" r))))
+            _ (dosync
+               (doseq [r (range 60 80)]
+                 (alter-document tx :order (select-first tx :order r) assoc :type (str "update" r))))
+            _ (dosync
+               (doseq [r (range 80 100)]
+                 (alter-document tx :order (select-first tx :order r) assoc :type (str "update" r))))
+            ]))
+    (finally
+      (println :finish)
+      (.stop (-> @ctx :order :evictor)))))
 
 
  
-;; ;; Insert 100 records
+;; Insert 100 records
 (let [evictor (evict-mongodb/create)
       meta-model
       {:order {:unique true :indexes [] :evictor evictor :evictor-delay 1000}}
@@ -175,7 +188,7 @@
           _ (start-coll ctx :order)]))
 
 
-;; ;; ;; Update one record
+;; Update one record
 (let [evictor (evict-mongodb/create)
       meta-model
       {:order {:unique true :indexes [] :evictor evictor :evictor-delay 1000}}
@@ -200,7 +213,7 @@
       _ (mc/remove db :order)
       _ (start-coll ctx :order)])
 
-;; ;; ;; Delete One
+;; Delete One
 (let [evictor (evict-mongodb/create)
       meta-model
       {:order {:unique true :indexes [] :evictor evictor :evictor-delay 1000}}
