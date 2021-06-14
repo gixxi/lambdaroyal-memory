@@ -94,11 +94,9 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
            (doall
             (map
              (fn [coll] (let [docs (get-all-documents (:db @db-ctx) coll)
-                              _ (println :docs docs)
                               tx (create-tx ctx :force true)]
                           (doseq [doc docs]
                             (let [existing doc
-                                  _ (println :existing existing)
                                   user-scope-tuple (dosync
                                                     (insert-raw tx coll (:_id existing) existing))]))
                           (println (format "collection %s contains %d documents" coll (count docs)))))
