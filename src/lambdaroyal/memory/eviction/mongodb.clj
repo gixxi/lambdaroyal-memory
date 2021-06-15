@@ -58,8 +58,8 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
 (defn- update-document [this coll-name unique-key user-value db]
   (if @verbose
     (println :update-document coll-name unique-key user-value))
-  ;;(mc/update-by-id db coll-name unique-key user-value)
-  )
+  (let [wal-payload {:fn :update :coll coll-name :id unique-key :val user-value}]
+    (mc/update-by-id db coll-name unique-key user-value)))
 
 (defn- delete-document
   [channel coll-name unique-key db]
@@ -85,7 +85,28 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
                     (dependency-model-ordered colls)
                     (map :name colls))
             conn (get-connection url)
-            db (get-database db-name conn)]
+            db (get-database db-name conn)
+
+            ;; done by control (synchronously)
+            ;; build queue (create-queue "mongodb")
+            ;; assign the queue to the context
+            ;; swap! db-ctx assoc :wal-queue queue
+
+            ;; THREAD #2
+            ;; start a second thread that consumes from queue (future (loop))
+            ;; 1. peek for something, if there is nothing, sleep for e.g. 1000ms
+            ;; if there is something, process everything, if you fail to process, sleep for e.g. 1000ms and log some error
+
+
+            ;; done by control (synchronously) DON'T READ IN UNTIL THE WHOLE QUEUE IS PROCESSED - OTHERWISE WE END UP WITH INCOHERENT DATA
+            ;; before read-in data we need to consume the remaining stuff from the queue (synchronous)
+            ;; (loop []
+            ;; (if-let [head (peek queue)]
+            ;;    (do
+            ;;      (try-to-flush))
+            ;;    (recur)))
+            
+            ]
         (do
           (swap! db-ctx assoc :conn conn :db db)
           (println (format "collection order %s" (apply str (interpose " -> " colls))))
