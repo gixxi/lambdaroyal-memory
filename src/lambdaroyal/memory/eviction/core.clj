@@ -19,11 +19,15 @@
 (defprotocol EvictionChannelHeartbeat
   (alive? [this] "returns true if the eviction channel is up'n running"))
 
+(defprotocol EvictionChannelCompaction
+  (compaction [this ctx] "runs schedules compaction"))
+
 (defrecord EvictionChannelProxy [queue delay stopped eviction-channel]
   EvictionChannel
   (start [this ctx colls] (.start (.eviction-channel this) ctx colls))
   (started? [this] (.started? (.eviction-channel this)))
-  (stop [this] (swap! (.stopped this) not))
+  (stop [this] (swap! (.stopped this) not)
+        (-> this .eviction-channel .stop))
   (stopped? [this] (true? @(.stopped this)))
   (insert [this coll-name unique-key user-value]
     (if (-> this .eviction-channel .started?)

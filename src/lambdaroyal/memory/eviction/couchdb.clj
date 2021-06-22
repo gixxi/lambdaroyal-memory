@@ -1,6 +1,6 @@
 (ns ^{:doc "An Eviction Channel that uses a Couch DB server to load persistent data and to backup all transaction to. The couch db server
-is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcouchdb.url or individually configured per eviction channel instance"} 
-    lambdaroyal.memory.eviction.couchdb
+is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcouchdb.url or individually configured per eviction channel instance"}
+ lambdaroyal.memory.eviction.couchdb
   (:require [lambdaroyal.memory.eviction.core :as evict]
             [lambdaroyal.memory.core.context :refer :all]
             [lambdaroyal.memory.core.tx :refer :all]
@@ -39,10 +39,10 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
         _ (if (-> read-only deref true?) (log/info "CouchDB evictor works in READ-ONLY MODE. THIS IS NOT THE PRODUCTION MODE"))
         e (format "Cannot access Couch DB server on %s. Did you start it (probably by sudo /usr/local/etc/init.d/couchdb start" url)]
     (try
-      (if-not 
-          (= "Welcome" (:couchdb (clutch/couchdb-info url)))
+      (if-not
+       (= "Welcome" (:couchdb (clutch/couchdb-info url)))
         (throw (IllegalArgumentException. e)))
-      (catch ConnectException ex 
+      (catch ConnectException ex
         (throw (IllegalStateException. e ex))))))
 
 (defn get-database-url [url db-name]
@@ -60,27 +60,27 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
 
 
 (defn- is-update-conflict [e]
-  (and (instance? clojure.lang.ExceptionInfo e) 
+  (and (instance? clojure.lang.ExceptionInfo e)
        (if-let [body (-> e ex-data :body)]
          (boolean (re-find #"update conflict" body)))))
 
-(defn- put-document 
+(defn- put-document
   "inserts a document to the couchdb instance referenced by the CouchEvictionChannel [channel]. if a version conflict occurs then this function trys again"
   [channel coll-name unique-key user-value]
   (let [rev-key [coll-name unique-key]
         rev (get @(:revs channel) rev-key)
         doc (assoc user-value :_id (str unique-key) :unique-key unique-key)
         doc (if rev (assoc doc :_rev rev) doc)
-        put (fn [doc] 
+        put (fn [doc]
               (let [flush-idx' (log-try "PUT" coll-name unique-key (:_rev doc))]
                 (try
                   (let [result (clutch/put-document (get-database channel coll-name) doc)]
-                    (do 
+                    (do
                       (swap! (.revs channel) assoc rev-key (:_rev result))
                       (log-result flush-idx' true "PUT" coll-name unique-key (:_rev doc))
                       true))
                   (catch Exception e
-                    (if (is-update-conflict e) 
+                    (if (is-update-conflict e)
                       false
                       (do
                         (log-result flush-idx' false "PUT" coll-name unique-key (:_rev doc))
@@ -96,7 +96,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
       (catch Exception e
         (log/fatal (format "failed to put document %s to couchdb. " doc) e)))))
 
-(defn- delete-document 
+(defn- delete-document
   "deletes a document from the couchdb"
   [channel coll-name unique-key]
   (let [delete (fn [document]
@@ -108,7 +108,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
                        (log-result flush-idx' true "DEL" coll-name unique-key (:_rev document))
                        true)
                      (catch Exception e
-                       (if (is-update-conflict e) 
+                       (if (is-update-conflict e)
                          false
                          (do
                            (log-result flush-idx' false "PUT" coll-name unique-key (:_rev document))
@@ -135,20 +135,20 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
   (start [this ctx colls]
     (future
       ;;order them by referential integrity constraints
-      (let [colls (if (> (count colls) 1) 
+      (let [colls (if (> (count colls) 1)
                     (dependency-model-ordered colls)
                     (map :name colls))]
         (do
           (println (format "collection order %s" (apply str (interpose " -> " colls))))
-          (log-info-timed 
+          (log-info-timed
            "read-in collections"
-           (doall 
+           (doall
             (map
              #(let [db (get-database this %)
                     docs (clutch/all-documents db {:include_docs true})
                     tx (create-tx ctx :force true)]
                 (doseq [doc docs]
-                  (let [existing (:doc doc)                         
+                  (let [existing (:doc doc)
                         user-scope-tuple (dosync
                                           (insert-raw tx % (:unique-key existing) existing))]
                     (swap! (.revs this) assoc [% (first user-scope-tuple)] (:_rev existing))))
@@ -166,7 +166,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
   (delete [this coll-name unique-key old-user-value]
     (if (and @(.started this) (-> read-only deref false?))
       (delete-document this coll-name unique-key)))
-  (delete-coll [this coll-name]    
+  (delete-coll [this coll-name]
     (if (and @(.started this) (-> read-only deref false?))
       (delete-coll this coll-name)))
   evict/EvictionChannelHeartbeat
@@ -174,9 +174,21 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
                    (do
                      (check-couchdb-connection (.url this))
                      true)
-                   (catch Exception e false))))
+                   (catch Exception e false)))
+  evict/EvictionChannelCompaction
+  (compaction [this ctx]
+    (let [compaction-fn (fn [coll]
+                          (let [coll-name (:name coll)
+                                url (str (get-database-url-by-channel this coll-name) "/_compact")]
+                          ;; Send form params as a json encoded body (POST or PUT)
+                            (client/post url {:form-params {} :content-type :json})))]
+      (try
+        (doseq [coll (vals @ctx)]
+          (println :compact (:name coll))
+          (compaction-fn coll))
+        (catch Throwable t (log/error t))))))
 
-(defn create 
+(defn create
   "provide custom url by calling this function with varargs :url \"https://username:password@account.cloudant.com\""
   [& args]
   (let [args (if args (apply hash-map args) {})
@@ -184,32 +196,8 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
         _ (check-couchdb-connection url)]
     (CouchEvictionChannel. url prefix (atom {}) (or (:started args) (atom false)))))
 
-(defn schedule-compaction [eviction-channel ctx]
-  (let [next-midnight (fn []
-                        (let [next-midnight (.plusDays (.atStartOfDay (java.time.LocalDate/now)) 1)
-                              instant (.toInstant (.atZone next-midnight (java.time.ZoneId/systemDefault)))]
-                          (java.util.Date/from instant)))
-        compaction-fn (fn [coll]
-                        (let [coll-name (:name coll)
-                              url (str (get-database-url-by-channel eviction-channel coll-name) "/_compact")]
-                          ;; Send form params as a json encoded body (POST or PUT)
-                          (client/post url {:form-params {} :content-type :json})))]
-    (future
-      (loop [next (System/currentTimeMillis)]
-        (if (.started? eviction-channel)
-          (do
-            (Thread/sleep 1000)
-            (recur
-             (if (<= next (System/currentTimeMillis))
-               (do
-                 (try
-                   (doseq [coll (vals @ctx)]
-                     (compaction-fn coll))
-                   (catch Throwable t (log/error t)))
-                 (let [next (next-midnight)
-                       _ (log/info (format "schedule next compaction for %s" next))]
-                   (.getTime next)))
-               next))))))))
+
+
 
 
 

@@ -7,8 +7,7 @@
             [lambdaroyal.memory.helper :refer :all]
             [monger.core :as mg]
             [monger.collection :as mc]
-            [monger.db :as md]
-             [lambdaroyal.memory.helper :refer :all])
+            [monger.db :as md])
   (:import [lambdaroyal.memory.core ConstraintException]
            [lambdaroyal.memory.core.tx ReferrerIntegrityConstraint]
            [org.apache.log4j BasicConfigurator]
@@ -27,17 +26,8 @@
               #(instance? ReferrerIntegrityConstraint %) constraints)]
     (some #(if (= (.foreign-coll %) target) %) rics)))
 
-(defn append-to-timeseries [prefix name & values]
-  (if (not= "false" (System/getenv "lambdaroyal.memory.traceteststats.disable"))
-    (let [dir (or (System/getenv "lambdaroyal.memory.traceteststats.dir") "test/stats/")
-          filename (str dir prefix "-" name ".dat")
-          format (SimpleDateFormat. "yyyy-MM-dd HH:mm:ss")]
-      (with-open [w (clojure.java.io/writer filename :append true)]
-        (.write w (apply str (.format format (new java.util.Date)) \; values))
-        (.write w "\n")))))
 
 
-(facts "Insert one record into Mongdb and check if its in memory and DB"
        (let [evictor (evict-mongodb/create)
              meta-model
              {:order {:unique true :indexes [] :evictor evictor :evictor-delay 1000}}
@@ -50,11 +40,11 @@
          (try
            (do
              (gtid-dosync
-              (insert tx :order  123456 {:type :gaga :receiver :foo :run 123456}))
+              (insert tx :order  123456 {:type :gaga :receiver :foo :run 123459}))
              (Thread/sleep 1000)
-             (fact "It will return the inserted record" (count (mc/find-maps db :order {:_id 123456})) => 1))
+             (fact "It will return the inserted record" (count (mc/find-maps db :order {:_id 123459})) => 1))
            (finally
-             (.stop (-> @ctx :order :evictor))))))
+             (.stop (-> @ctx :order :evictor)))))
 
 (facts "Update one record 1000 times and check if the value in MongoDB matches the in-memory value and also checks it completes under 10 seconds"
        (let [evictor (evict-mongodb/create)

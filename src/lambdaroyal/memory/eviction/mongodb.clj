@@ -2,6 +2,7 @@
 is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcouchdb.url or individually configured per eviction channel instance"}
  lambdaroyal.memory.eviction.mongodb
   (:require [lambdaroyal.memory.eviction.core :as evict]
+            [lambdaroyal.memory.eviction.wal :as wal]
             [lambdaroyal.memory.core.context :refer :all]
             [lambdaroyal.memory.core.tx :refer :all]
             [lambdaroyal.memory.helper :refer :all]
@@ -11,8 +12,10 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
             [clojure.java.io :as io]
             [clojure.tools.logging :as log]
             [clj-http.client :as client]
-            [clojure.set :refer [union]])
-  (:import [java.net ConnectException]))
+            [clojure.set :refer [union]]
+            [cheshire.core :as json])
+  (:import [java.net ConnectException]
+           [org.infobip.lib.popout FileQueue Serializer Deserializer WalFilesConfig CompressedFilesConfig]))
 
 (def flush-idx (atom (- (System/currentTimeMillis) (.getTime (.parse (java.text.SimpleDateFormat. "ddMMyyyy") "11092019")))))
 (def verbose (atom false))
@@ -48,7 +51,9 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
   (mg/get-db (conn :conn) db-name))
 
 (defn get-connection [url]
-  (mg/connect-via-uri url))
+  (let [x (mg/connect-via-uri url)
+        _ (println :get-connection x)]
+    x))
 
 (defn- put-document [this coll-name unique-key user-value db]
   (if @verbose
@@ -62,12 +67,12 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
     (mc/update-by-id db coll-name unique-key user-value)))
 
 (defn- delete-document
-  [channel coll-name unique-key db]
+  [this coll-name unique-key db]
   (if @verbose
     (println :delete-document coll-name unique-key))
   (mc/remove db coll-name {:_id unique-key}))
 
-(defn- delete-all [channel url db-name coll-name]
+(defn- delete-all [this url db-name coll-name]
   (let [conn (get-connection url)
         db (get-database db-name conn)]
     (mc/remove db coll-name)))
@@ -75,82 +80,98 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
 (defn- get-all-documents [db coll]
   (mc/find-maps db coll))
 
-(defrecord MongoEvictionChannel [url db-name db-ctx ^clojure.lang.Atom started]
+(defrecord MongoEvictionChannel [url db-name db-ctx ^clojure.lang.Atom started ^clojure.lang.Atom stopped]
   evict/EvictionChannel
   (start [this ctx colls]
     (future
       ;;order them by referential integrity constraints
-
+      (println "Eviction Start")
       (let [colls (if (> (count colls) 1)
                     (dependency-model-ordered colls)
                     (map :name colls))
+            queue (wal/create-queue "mongodb")
+
             conn (get-connection url)
             db (get-database db-name conn)
+            _ (swap! db-ctx assoc :wal-queue queue)
+            _ (println "Start processing queue")
+            ;; This is starting the consumer asynchronously, checks that there is files to write, and those files will be written.
+            ;; It also accepts new insertions in the queue 
+            _ (wal/start-queue queue #(@(.stopped this))
+                               (fn [payload]
+                                 (let [{fn :fn coll :coll id :id val :val} (json/parse-string payload)]
+                                   (cond
+                                     (= fn :insert) (try (do (mc/insert db coll (assoc val :_id id))
+                                                             {:success true})
+                                                         (catch Exception e {:success false :error-msg (str "Caught exception: " (.getMessage e))}))
+                                     (= fn :update) (try (do (mc/update-by-id db coll id val)
+                                                             {:success true})
+                                                         (catch Exception e {:success false :error-msg (str "Caught exception: " (.getMessage e))}))
+                                     (= fn :delete) (try (do (mc/remove db coll {:_id id})
+                                                             {:success true})
+                                                         (catch Exception e {:success false :error-msg (str "Caught exception: " (.getMessage e))}))))))]
 
-            ;; done by control (synchronously)
-            ;; build queue (create-queue "mongodb")
-            ;; assign the queue to the context
-            ;; swap! db-ctx assoc :wal-queue queue
-
-            ;; THREAD #2
-            ;; start a second thread that consumes from queue (future (loop))
-            ;; 1. peek for something, if there is nothing, sleep for e.g. 1000ms
-            ;; if there is something, process everything, if you fail to process, sleep for e.g. 1000ms and log some error
-
-
-            ;; done by control (synchronously) DON'T READ IN UNTIL THE WHOLE QUEUE IS PROCESSED - OTHERWISE WE END UP WITH INCOHERENT DATA
-            ;; before read-in data we need to consume the remaining stuff from the queue (synchronous)
-            ;; (loop []
-            ;; (if-let [head (peek queue)]
-            ;;    (do
-            ;;      (try-to-flush))
-            ;;    (recur)))
-            
-            ]
+         ;; Do restore from wal folder here
+        ;; 1. Check if there is anything in folder 
+        ;; 2. loop over items in folder and insert in queue
+        ;; 3.  
+        
+        ;; Iterates over all the collections using the context and directly bulk loads the data from the MongoDB.
         (do
           (swap! db-ctx assoc :conn conn :db db)
           (println (format "collection order %s" (apply str (interpose " -> " colls))))
           (log-info-timed
            "read-in collections"
-           (doall
-            (map
-             (fn [coll] (let [docs (get-all-documents (:db @db-ctx) coll)
-                              tx (create-tx ctx :force true)]
-                          (doseq [doc docs]
-                            (let [existing doc
-                                  user-scope-tuple (dosync
-                                                    (insert-raw tx coll (:_id existing) existing))]))
-                          (println (format "collection %s contains %d documents" coll (count docs)))))
-             colls)))
-          (println :type (-> this .started type))
-          (reset! (.started this) true)))))
+           (wal/loop-until-ok
+            (fn [] (doall
+                    (map
+                     (fn [coll] (let [docs (get-all-documents (:db @db-ctx) coll)
+                                      tx (create-tx ctx :force true)]
+                                  (doseq [doc docs]
+                                    (let [existing doc
+                                          user-scope-tuple (dosync
+                                                            (insert-raw tx coll (:_id existing) existing))]))
+                                  (println (format "collection %s contains %d documents" coll (count docs)))))
+                     colls)))
+            (fn [] (some? (wal/peek-queue queue)))
+            "Still reading from the queue and persist to MongoDB"
+            1000)))
+          (reset! (.started this) true))))
   (started? [this] @(.started this))
-  (stopped? [this] nil)
+  (stopped? [this]  @(.stopped this))
   (insert [this coll-name unique-key user-value]
-          (put-document this coll-name unique-key user-value (:db @db-ctx)))
-  (stop [this] (mg/disconnect (:conn @db-ctx)))
+    (let [payload (wal/get-wal-payload :insert coll-name unique-key user-value)]
+      (wal/insert-into-queue payload (:wal-queue @db-ctx))))
+  (stop [this]
+        (.close (:wal-queue @db-ctx))
+        (println :connection (:conn @db-ctx) (type (:conn @db-ctx)))
+        (mg/disconnect (:conn (:conn @db-ctx)))
+        (reset! (.stopped this) true)
+        (if @verbose (println :stop "MongoDB evictor-channel stopped")))
   (update [this coll-name unique-key old-user-value new-user-value]
-    (if (and @(.started this) (-> read-only deref false?))
-      (update-document this coll-name unique-key new-user-value (:db @db-ctx))))
+    (let [payload (wal/get-wal-payload :update coll-name unique-key new-user-value)]
+      (wal/insert-into-queue payload (:wal-queue @db-ctx))))
   (delete [this coll-name unique-key old-user-value]
-    (if (and @(.started this) (-> read-only deref false?))
-      (delete-document this coll-name unique-key (:db @db-ctx))))
+    (let [payload (wal/get-wal-payload :delete coll-name unique-key old-user-value)]
+      (wal/insert-into-queue payload (:wal-queue @db-ctx))))
   (delete-coll [this coll-name]
-               (println :here-delete-coll)
+    (println :here-delete-coll)
     (delete-all this url db-name coll-name))
   evict/EvictionChannelHeartbeat
   (alive? [this] (try
                    (check-mongodb-connection url (:db @db-ctx))
-                   (catch Exception e false))))
-  
+                   (catch Exception e false)))
+  evict/EvictionChannelCompaction
+  (compaction [this ctx]
+    nil))
 
 (defn create
   "provide custom url by calling this function with varargs :url \"https://username:password@account.cloudant.com\""
   [& args]
-  (doseq [arg args] (println :create-args arg (type arg)))
   (let [args (if args (apply hash-map args) {})
+        _ (if @verbose (println (format "[mongodb.create] uses db %s" (System/getProperty "mongodb_dbname"))))
         {:keys [url db-name] :or {url (get-database-url (System/getProperty "mongodb_preurl") (System/getProperty "mongodb_username") (System/getProperty "mongodb_password") (System/getProperty "mongodb_posturl")) db-name (System/getProperty "mongodb_dbname")}} args
         conn (get-connection url)
         _ (check-mongodb-connection url (get-database db-name conn))]
-    (MongoEvictionChannel. url db-name (atom {}) (or (:started args) (atom false)))))
+    (MongoEvictionChannel. url db-name (atom {}) (or (:started args) (atom false)) (atom false))))
 

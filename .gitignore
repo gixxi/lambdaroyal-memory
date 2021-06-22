@@ -17,3 +17,4 @@ pom.xml.asc
 .idea/misc.xml
 .lsp/sqlite.db
 .calva/
+tmp/faris-env.sh
