@@ -135,20 +135,20 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
   (start [this ctx colls]
     (future
       ;;order them by referential integrity constraints
-      (let [colls (if (> (count colls) 1) 
+      (let [colls (if (> (count colls) 1)
                     (dependency-model-ordered colls)
                     (map :name colls))]
         (do
           (println (format "collection order %s" (apply str (interpose " -> " colls))))
-          (log-info-timed 
+          (log-info-timed
            "read-in collections"
-           (doall 
+           (doall
             (map
              #(let [db (get-database this %)
                     docs (clutch/all-documents db {:include_docs true})
                     tx (create-tx ctx :force true)]
                 (doseq [doc docs]
-                  (let [existing (:doc doc)                         
+                  (let [existing (:doc doc)
                         user-scope-tuple (dosync
                                           (insert-raw tx % (:unique-key existing) existing))]
                     (swap! (.revs this) assoc [% (first user-scope-tuple)] (:_rev existing))))
@@ -166,7 +166,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
   (delete [this coll-name unique-key old-user-value]
     (if (and @(.started this) (-> read-only deref false?))
       (delete-document this coll-name unique-key)))
-  (delete-coll [this coll-name]    
+  (delete-coll [this coll-name]
     (if (and @(.started this) (-> read-only deref false?))
       (delete-coll this coll-name)))
   evict/EvictionChannelHeartbeat
@@ -174,7 +174,19 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
                    (do
                      (check-couchdb-connection (.url this))
                      true)
-                   (catch Exception e false))))
+                   (catch Exception e false)))
+  evict/EvictionChannelCompaction
+  (compaction [this ctx]
+    (let [compaction-fn (fn [coll]
+                          (let [coll-name (:name coll)
+                                url (str (get-database-url-by-channel this coll-name) "/_compact")]
+                          ;; Send form params as a json encoded body (POST or PUT)
+                            (client/post url {:form-params {} :content-type :json})))]
+      (try
+        (doseq [coll (vals @ctx)]
+          (println :compact (:name coll))
+          (compaction-fn coll))
+        (catch Throwable t (log/error t))))))
 
 (defn create 
   "provide custom url by calling this function with varargs :url \"https://username:password@account.cloudant.com\""

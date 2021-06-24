@@ -19,6 +19,9 @@
 (defprotocol EvictionChannelHeartbeat
   (alive? [this] "returns true if the eviction channel is up'n running"))
 
+(defprotocol EvictionChannelCompaction
+  (compaction [this ctx] "runs schedules compaction"))
+
 (defrecord EvictionChannelProxy [queue delay stopped eviction-channel]
   EvictionChannel
   (start [this ctx colls] (.start (.eviction-channel this) ctx colls))
