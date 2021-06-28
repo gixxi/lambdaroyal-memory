@@ -26,7 +26,13 @@
   EvictionChannel
   (start [this ctx colls] (.start (.eviction-channel this) ctx colls))
   (started? [this] (.started? (.eviction-channel this)))
-  (stop [this] (swap! (.stopped this) not))
+  (stop [this] (if-not @stopped
+                 (do (while (not (.isEmpty (.queue this)))
+                       (do
+                         (println "[EvictionChannelProxy] waiting for an empty queue")
+                         (Thread/sleep 1000)))
+                     (.stop (.eviction-channel this))
+                     (reset! (.stopped this) true))))
   (stopped? [this] (true? @(.stopped this)))
   (insert [this coll-name unique-key user-value]
     (if (-> this .eviction-channel .started?)

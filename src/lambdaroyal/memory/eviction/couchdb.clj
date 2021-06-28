@@ -11,7 +11,9 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
             [clojure.java.io :as io]
             [clojure.tools.logging :as log]
             [clj-http.client :as client]
-            [clojure.set :refer [union]])
+            [clojure.set :refer [union]]
+            [lambdaroyal.memory.eviction.wal :as wal]
+            [cheshire.core :as json])
   (:use com.ashafa.clutch.http-client)
   (:import [java.net ConnectException]))
 
@@ -49,12 +51,12 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
   (utils/url (utils/url url) db-name))
 
 (defn get-database-url-by-channel [channel coll-name]
-  (let [db-name (if (keyword? coll-name) (name coll-name) name)
+  (let [db-name (if (keyword? coll-name) (name coll-name) coll-name)
         db-name (if (.prefix channel) (str (.prefix channel) "_" db-name) db-name)]
     (get-database-url (.url channel) db-name)))
 
 (defn- get-database [channel coll-name]
-  (let [db-name (if (keyword? coll-name) (name coll-name) name)
+  (let [db-name (if (keyword? coll-name) (name coll-name) coll-name)
         db-name (if (.prefix channel) (str (.prefix channel) "_" db-name) db-name)]
     (clutch/get-database (get-database-url (.url channel) db-name))))
 
@@ -74,17 +76,19 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
         put (fn [doc] 
               (let [flush-idx' (log-try "PUT" coll-name unique-key (:_rev doc))]
                 (try
-                  (let [result (clutch/put-document (get-database channel coll-name) doc)]
+                  (let [db  (get-database channel coll-name)
+                        result (clutch/put-document db doc)]
                     (do 
                       (swap! (.revs channel) assoc rev-key (:_rev result))
                       (log-result flush-idx' true "PUT" coll-name unique-key (:_rev doc))
                       true))
                   (catch Exception e
-                    (if (is-update-conflict e) 
-                      false
-                      (do
-                        (log-result flush-idx' false "PUT" coll-name unique-key (:_rev doc))
-                        (throw e)))))))]
+                    (do
+                      (if (is-update-conflict e)
+                          false
+                          (do
+                            (log-result flush-idx' false "PUT" coll-name unique-key (:_rev doc))
+                            (throw e))))))))]
     (try
       (loop [doc doc]
         (if-not (put doc)
@@ -130,10 +134,30 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
     (catch Exception e
       (log/fatal (format "failed to delete db %s from couchdb. " coll-name)))))
 
-(defrecord CouchEvictionChannel [url prefix revs ^clojure.lang.Atom started]
+(defrecord CouchEvictionChannel [url prefix db-ctx revs ^clojure.lang.Atom started ^clojure.lang.Atom stopped]
   evict/EvictionChannel
   (start [this ctx colls]
     (future
+      (if (-> @db-ctx :wal-queue nil?)
+        (let [queue (wal/create-queue "couchdb")
+              _ (swap! db-ctx assoc :wal-queue queue)
+              _ (wal/start-queue queue @(.stopped this)
+                                 (fn [payload]
+                                   (let [{func "fn" coll "coll" id "id" val "val"} (json/parse-string payload)
+                                         _ (:payload payload)]
+                                     (cond
+                                       (= func "insert") (try (do
+                                                                (put-document this coll id val)
+                                                                {:success true})
+                                                              (catch Exception e {:success false :error-msg (str "Caught exception: " (.getMessage e))}))
+                                       (= func "update") (try (do
+                                                                (put-document this coll id val)
+                                                                {:success true})
+                                                              (catch Exception e {:success false :error-msg (str "Caught exception: " (.getMessage e))}))
+                                       (= func "delete") (try (do
+                                                                (delete-document this coll id)
+                                                                {:success true})
+                                                              (catch Exception e {:success false :error-msg (str "Caught exception: " (.getMessage e))}))))))]))
       ;;order them by referential integrity constraints
       (let [colls (if (> (count colls) 1)
                     (dependency-model-ordered colls)
@@ -142,30 +166,43 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
           (println (format "collection order %s" (apply str (interpose " -> " colls))))
           (log-info-timed
            "read-in collections"
-           (doall
-            (map
-             #(let [db (get-database this %)
-                    docs (clutch/all-documents db {:include_docs true})
-                    tx (create-tx ctx :force true)]
-                (doseq [doc docs]
-                  (let [existing (:doc doc)
-                        user-scope-tuple (dosync
-                                          (insert-raw tx % (:unique-key existing) existing))]
-                    (swap! (.revs this) assoc [% (first user-scope-tuple)] (:_rev existing))))
-                (println (format "collection %s contains %d documents" % (count docs))))
-             colls)))
-          (reset! (.started this) true)))))
+           (wal/loop-until-ok
+            (fn [] (doall
+                    (map
+                     #(let [db (get-database this %)
+                            docs (clutch/all-documents db {:include_docs true})
+                            tx (create-tx ctx :force true)]
+                        (doseq [doc docs]
+                          (let [existing (:doc doc)
+                                user-scope-tuple (dosync
+                                                  (insert-raw tx % (:unique-key existing) existing))]
+                            (swap! (.revs this) assoc [% (first user-scope-tuple)] (:_rev existing))))
+                        (println (format "collection %s contains %d documents" % (count docs))))
+                     colls)))
+            ;; This is the condition not ok function
+            (fn [] (and (some? (wal/peek-queue (:wal-queue @db-ctx))) @(.stopped this)))
+            "Still reading from the queue and persist to CouchDB"
+            1000)))
+        (reset! (.started this) true))))
   (started? [this] @(.started this))
-  (stopped? [this] nil)
+  (stopped? [this] @(.stopped this))
+  (stop [this]
+    (println "[CouchDBEviction stop] Closing the queue in" (.getName (Thread/currentThread)))
+    (.close (:wal-queue @db-ctx))
+    (reset! (.stopped this) true)
+    (println "[CouchDBEviction stop] evictor-channel stopped"))
   (insert [this coll-name unique-key user-value]
     (if (and @(.started this) (-> read-only deref false?))
-      (put-document this coll-name unique-key user-value)))
+      (let [payload (wal/get-wal-payload :insert coll-name unique-key user-value)]
+        (wal/insert-into-queue payload (:wal-queue @db-ctx)))))
   (update [this coll-name unique-key old-user-value new-user-value]
     (if (and @(.started this) (-> read-only deref false?))
-      (put-document this coll-name unique-key new-user-value)))
+      (let [payload (wal/get-wal-payload :update coll-name unique-key new-user-value)]
+        (wal/insert-into-queue payload (:wal-queue @db-ctx)))))
   (delete [this coll-name unique-key old-user-value]
     (if (and @(.started this) (-> read-only deref false?))
-      (delete-document this coll-name unique-key)))
+      (let [payload (wal/get-wal-payload :delete coll-name unique-key old-user-value)]
+        (wal/insert-into-queue payload (:wal-queue @db-ctx)))))
   (delete-coll [this coll-name]
     (if (and @(.started this) (-> read-only deref false?))
       (delete-coll this coll-name)))
@@ -194,7 +231,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
   (let [args (if args (apply hash-map args) {})
         {:keys [url prefix] :or {url (or (System/getenv "couchdb.url") "http://localhost:5984")}} args
         _ (check-couchdb-connection url)]
-    (CouchEvictionChannel. url prefix (atom {}) (or (:started args) (atom false)))))
+    (CouchEvictionChannel. url prefix (atom {}) (atom {}) (or (:started args) (atom false)) (atom false))))
 
 (defn schedule-compaction [eviction-channel ctx]
   (let [next-midnight (fn []

@@ -21,7 +21,8 @@
   {:fn fn :coll coll-name :id id :val value})
 
 (defn create-queue [prefix]
-  (let [wal-files-config-builder (WalFilesConfig/builder)
+  (let [thread-name (.getName (Thread/currentThread))
+        wal-files-config-builder (WalFilesConfig/builder)
         wal-files-config-builder (.maxCount wal-files-config-builder (int 2048))
         wal-files-config-builder (.build wal-files-config-builder)
         compressed-files-config-builder (CompressedFilesConfig/builder)
@@ -37,6 +38,7 @@
         queue (.wal queue wal-files-config-builder)
         queue (.compressed queue compressed-files-config-builder)
         queue (.build queue)]
+    (println "[create-queue] Queue was created in " thread-name)
     queue))
 
 (defn insert-into-queue [payload queue]
@@ -55,25 +57,30 @@
                           (println "Error in processing queue" (:error-msg new-state))
                           (and (-> old-state :success true?) (-> new-state :success false?))
                           (println "Continue processing queue")
-                          :else nil)))]
+                          :else nil)))
+        _ (println :start-processing-queue4 stopped-fn)]
     (loop []
-      (if-let [queue-elem (.peek queue)]
-        (do
-          (reset! error-state (process-from-queue queue-elem))
-          (let [result @error-state]
-            (if (:success result)
-              (do (println :success)
+      (if-not stopped-fn
+        (if-let [queue-elem (.peek queue)]
+          (do
+            (reset! error-state (process-from-queue queue-elem))
+            (let [result @error-state]
+              (if (:success result)
+                (do 
                   (.poll queue))
-              (println :error (:error-msg result))))
-          (recur))
-        (do
-          (Thread/sleep 1000)
-          (recur))))))
+                (println :error (:error-msg result))))
+            (recur))
+          (do
+            (Thread/sleep 1000)
+            (recur)))
+        (println "[process-queue] Process queue stopped")))))
 
 (defn start-queue [queue stopped-fn process-from-queue]
-  (if queue 
-    (future
-      (process-queue queue stopped-fn process-from-queue))))
+  (if queue
+    (do
+      (println "[WAL start-queue]")
+      (future
+        (process-queue queue stopped-fn process-from-queue)))))
 
 (defn loop-until-ok [code-func condition-not-ok-func error-msg sleep-time]
   (let [should-print-error (atom true)]

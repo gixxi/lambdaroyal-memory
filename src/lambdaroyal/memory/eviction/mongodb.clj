@@ -82,49 +82,50 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
   (start [this ctx colls]
     (future
       ;;order them by referential integrity constraints
-
       (let [colls (if (> (count colls) 1)
                     (dependency-model-ordered colls)
                     (map :name colls))
             conn (get-connection url)
-            db (get-database db-name conn)
-            queue (wal/create-queue "mongodb")
-            _ (swap! db-ctx assoc :wal-queue queue)
-            _ (wal/start-queue queue #(@(.stopped this))
-                               (fn [payload]
-                                 (let [{func "fn" coll "coll" id "id" val "val"} (json/parse-string payload)]
-                                   (cond
-                                     (= func "insert") (try (do
-                                                             (mc/insert db coll (assoc val :_id id))
-                                                             {:success true})
-                                                           (catch Exception e {:success false :error-msg (str "Caught exception: " (.getMessage e))}))
-                                     (= func "update") (try (do (mc/update-by-id db coll id val)
-                                                               {:success true})
-                                                           (catch Exception e {:success false :error-msg (str "Caught exception: " (.getMessage e))}))
-                                     (= func "delete") (try (do (mc/remove db coll {:_id id})
-                                                               {:success true})
-                                                           (catch Exception e {:success false :error-msg (str "Caught exception: " (.getMessage e))}))))))]
-        (do
-          (swap! db-ctx assoc :conn conn :db db)
-          (println (format "collection order %s" (apply str (interpose " -> " colls))))
-          (log-info-timed
-           "read-in collections"
-           (wal/loop-until-ok
-             (fn [] (doall
-                     (map
-                      (fn [coll] (let [docs (get-all-documents (:db @db-ctx) coll)
-                                       tx (create-tx ctx :force true)]
-                                   (doseq [doc docs]
-                                     (let [existing doc
-                                           user-scope-tuple (dosync
-                                                             (insert-raw tx coll (:_id existing) existing))]))
-                                   (println (format "collection %s contains %d documents" coll (count docs)))))
-                      colls)))
-             (fn [] (some? (wal/peek-queue queue)))
-             "Still reading from the queue and persist to MongoDB"
-             1000))
-          (println :type (-> this .started type))
-          (reset! (.started this) true)))))
+            db (get-database db-name conn)])
+      (if (-> @db-ctx :wal-queue nil?)
+        (let [queue (wal/create-queue "mongodb")
+              _ (swap! db-ctx assoc :wal-queue queue)
+              _ (wal/start-queue queue #(@(.stopped this))
+                                 (fn [payload]
+                                   (let [{func "fn" coll "coll" id "id" val "val"} (json/parse-string payload)]
+                                     (cond
+                                       (= func "insert") (try (do
+                                                                (mc/insert db coll (assoc val :_id id))
+                                                                {:success true})
+                                                              (catch Exception e {:success false :error-msg (str "Caught exception: " (.getMessage e))}))
+                                       (= func "update") (try (do (mc/update-by-id db coll id val)
+                                                                  {:success true})
+                                                              (catch Exception e {:success false :error-msg (str "Caught exception: " (.getMessage e))}))
+                                       (= func "delete") (try (do (mc/remove db coll {:_id id})
+                                                                  {:success true})
+                                                              (catch Exception e {:success false :error-msg (str "Caught exception: " (.getMessage e))}))))))]
+          (do
+            (swap! db-ctx assoc :conn conn :db db)
+            (println (format "collection order %s" (apply str (interpose " -> " colls))))
+            (log-info-timed
+             "read-in collections"
+             (wal/loop-until-ok
+              (fn [] (doall
+                      (map
+                       (fn [coll] (let [docs (get-all-documents (:db @db-ctx) coll)
+                                        tx (create-tx ctx :force true)]
+                                    (doseq [doc docs]
+                                      (let [existing doc
+                                            user-scope-tuple (dosync
+                                                              (insert-raw tx coll (:_id existing) existing))]))
+                                    (println (format "collection %s contains %d documents" coll (count docs)))))
+                       colls)))
+            ;; This is the condition not ok function
+              (fn [] (and (some? (wal/peek-queue (:wal-queue @db-ctx))) @(.stopped this)))
+              "Still reading from the queue and persist to MongoDB"
+              1000))
+            (println :type (-> this .started type))
+            (reset! (.started this) true))))))
   (started? [this] @(.started this))
   (stopped? [this]  @(.stopped this))
   (insert [this coll-name unique-key user-value]
