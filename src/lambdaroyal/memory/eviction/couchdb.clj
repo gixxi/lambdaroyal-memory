@@ -141,7 +141,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
       (if (-> @db-ctx :wal-queue nil?)
         (let [queue (wal/create-queue "couchdb")
               _ (swap! db-ctx assoc :wal-queue queue)
-              _ (wal/start-queue queue @(.stopped this)
+              _ (wal/start-queue queue (.stopped this)
                                  (fn [payload]
                                    (let [{func "fn" coll "coll" id "id" val "val"} (json/parse-string payload)
                                          _ (:payload payload)]
@@ -180,7 +180,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
                         (println (format "collection %s contains %d documents" % (count docs))))
                      colls)))
             ;; This is the condition not ok function
-            (fn [] (and (some? (wal/peek-queue (:wal-queue @db-ctx))) @(.stopped this)))
+            (fn [] (some? (wal/peek-queue (:wal-queue @db-ctx))))
             "Still reading from the queue and persist to CouchDB"
             1000)))
         (reset! (.started this) true))))

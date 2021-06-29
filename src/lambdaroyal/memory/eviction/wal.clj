@@ -57,10 +57,9 @@
                           (println "Error in processing queue" (:error-msg new-state))
                           (and (-> old-state :success true?) (-> new-state :success false?))
                           (println "Continue processing queue")
-                          :else nil)))
-        _ (println :start-processing-queue4 stopped-fn)]
+                          :else nil)))]
     (loop []
-      (if-not stopped-fn
+      (if-not @stopped-fn
         (if-let [queue-elem (.peek queue)]
           (do
             (reset! error-state (process-from-queue queue-elem))
