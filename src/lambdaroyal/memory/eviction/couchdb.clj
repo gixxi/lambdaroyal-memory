@@ -181,7 +181,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
                      colls)))
             ;; This is the condition not ok function
             (fn [] (some? (wal/peek-queue (:wal-queue @db-ctx))))
-            "Still reading from the queue and persist to CouchDB"
+            "[CouchDBEviction start] Still reading from the queue and persist to CouchDB"
             1000)))
         (reset! (.started this) true))))
   (started? [this] @(.started this))

@@ -48,7 +48,9 @@
 (defn peek-queue [queue]
   (if queue (.peek queue)))
 
-(defn process-queue [queue stopped-fn process-from-queue]
+(defn process-queue 
+  "Consumer function: will persist whats left in the WAL until condition @stopped-atom is met"
+  [queue stopped-atom process-from-queue]
   (let [error-state (atom {:success true})
         _  (add-watch error-state :listener-one
                       (fn [key ref old-state new-state]
@@ -59,7 +61,7 @@
                           (println "Continue processing queue")
                           :else nil)))]
     (loop []
-      (if-not @stopped-fn
+      (if-not @stopped-atom
         (if-let [queue-elem (.peek queue)]
           (do
             (reset! error-state (process-from-queue queue-elem))
@@ -74,17 +76,17 @@
             (recur)))
         (println "[process-queue] Process queue stopped")))))
 
-(defn start-queue [queue stopped-fn process-from-queue]
+(defn start-queue [queue stopped-atom process-from-queue]
   (if queue
     (do
       (println "[WAL start-queue]")
       (future
-        (process-queue queue stopped-fn process-from-queue)))))
+        (process-queue queue stopped-atom process-from-queue)))))
 
 (defn loop-until-ok [code-func condition-not-ok-func error-msg sleep-time]
   (let [should-print-error (atom true)]
     (while (condition-not-ok-func)
-      (if should-print-error
+      (if @should-print-error
         (do
           (println error-msg)
           (reset! should-print-error false)))
