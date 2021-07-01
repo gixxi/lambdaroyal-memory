@@ -1,3 +1,8 @@
+;; --------------------------------------------------------------------
+;; Migrates from couchdb to mongodb
+;; --------------------------------------------------------------------
+
+
 (ns lambdaroyal.memory.eviction.test-migration
   (:require [midje.sweet :refer :all]
             [lambdaroyal.memory.eviction.core :as evict]
@@ -61,19 +66,18 @@
            (doseq [r (range 100)]
              (insert tx :order r {:type :gaga :receiver :foo :run r})))
            ;; We get the data in a transaction to get a consistent view of the data
-          res (reduce (fn [acc [coll xs]] (assoc acc coll xs)) {} 
-                      (dosync (reduce fn [acc coll]
-                                (let [records (select tx coll-key)]))))
-
-          res  (dosync (doseq [coll-key (keys @ctx)]
-                       (let [records (select tx coll-key)]
-                         
-                         )))
+          res  (dosync (reduce 
+                        (fn [acc coll]
+                          (conj acc [coll (doall (select tx coll))]))
+                        ;; empty accumulator - we add on constantly
+                        []
+                        ;; we iterate over this - coll is one element 
+                        (keys @ctx)))
           
-          _   (dosync (doseq [coll-key (keys @ctx)]
-                        (let [records (select tx coll-key)
-                              json' (map #(assoc (last %) :_id (first %)) records)
-                              _ (println :record json')
-                              _ (mc/insert-batch db coll-key json')])))])))
-       
+          ;; I/O
+          _   (doseq [[coll records] res]
+                (doseq [partition (partion-all 1000 records)]
+                  (let [json' (map #(assoc (last %) :_id (first %)) partition)
+                        _ (println :insert :coll coll :batch (count partition))
+                        _ (mc/insert-batch db coll json')])))])))
        
