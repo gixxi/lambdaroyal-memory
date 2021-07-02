@@ -62,18 +62,23 @@
                           :else nil)))]
     (loop []
       (if-not @stopped-atom
-        (if-let [queue-elem (.peek queue)]
-          (do
-            (reset! error-state (process-from-queue queue-elem))
-            (let [result @error-state]
-              (if (:success result)
-                (do 
-                  (.poll queue))
-                (println :error (:error-msg result))))
-            (recur))
-          (do
-            (Thread/sleep 1000)
-            (recur)))
+        (try
+          (if-let [queue-elem (.peek queue)]
+            (do
+              (reset! error-state (process-from-queue queue-elem))
+              (let [result @error-state]
+                (if (:success result)
+                  (do
+                    (println :success)
+                    (.poll queue))
+                  (println :error (:error-msg result))))
+              (recur))
+            (do
+              (Thread/sleep 1000)
+              (recur)))
+          (catch Exception e (println "[process-queue] error-in-process" e)
+                 (Thread/sleep 1000)
+                 (recur)))
         (println "[process-queue] Process queue stopped")))))
 
 (defn start-queue [queue stopped-atom process-from-queue]

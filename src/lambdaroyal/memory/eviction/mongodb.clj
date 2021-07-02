@@ -52,6 +52,9 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
 (defn get-connection [url]
   (mg/connect-via-uri url))
 
+(defn get-database-name []
+  (System/getProperty "mongodb_dbname"))
+
 (defn- put-document [this coll-name unique-key user-value db]
   (if @verbose
     (println :put-document coll-name unique-key user-value))

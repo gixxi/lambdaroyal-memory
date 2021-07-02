@@ -35,15 +35,6 @@
 (defn start-coll [ctx coll]
   @(.start (-> @ctx coll :evictor) ctx [(get @ctx coll)]))
 
-(defn get-database-url [prefix-url username password postfix-url]
-  (str prefix-url username ":" password "@" postfix-url))
-
-(defn get-database [db-name conn]
-  (mg/get-db (conn :conn) db-name))
-
-(defn get-connection [url]
-  (mg/connect-via-uri url))
-
 (def mongodb-dbname "migrationTest")
 
 ;; --------------------------------------------------------------------
@@ -76,7 +67,7 @@
           
           ;; I/O
           _   (doseq [[coll records] res]
-                (doseq [partition (partion-all 1000 records)]
+                (doseq [partition (partition-all 1000 records)]
                   (let [json' (map #(assoc (last %) :_id (first %)) partition)
                         _ (println :insert :coll coll :batch (count partition))
                         _ (mc/insert-batch db coll json')])))])))

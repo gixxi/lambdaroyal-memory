@@ -84,11 +84,12 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
                       true))
                   (catch Exception e
                     (do
+                      (println :erorr-in-couchdb e)
                       (if (is-update-conflict e)
-                          false
-                          (do
-                            (log-result flush-idx' false "PUT" coll-name unique-key (:_rev doc))
-                            (throw e))))))))]
+                        false
+                        (do
+                          (log-result flush-idx' false "PUT" coll-name unique-key (:_rev doc))
+                          (throw e))))))))]
     (try
       (loop [doc doc]
         (if-not (put doc)
@@ -98,7 +99,9 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
               (log/warn (format "update conflict on %s. try again." doc))
               (recur doc)))))
       (catch Exception e
-        (log/fatal (format "failed to put document %s to couchdb. " doc) e)))))
+        (do
+          (println :erorr-in-couchdb e)
+          (log/fatal (format "failed to put document %s to couchdb. " doc) e))))))
 
 (defn- delete-document 
   "deletes a document from the couchdb"
@@ -143,8 +146,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
               _ (swap! db-ctx assoc :wal-queue queue)
               _ (wal/start-queue queue (.stopped this)
                                  (fn [payload]
-                                   (let [{func "fn" coll "coll" id "id" val "val"} (json/parse-string payload)
-                                         _ (:payload payload)]
+                                   (let [{func "fn" coll "coll" id "id" val "val"} (json/parse-string payload)]
                                      (cond
                                        (= func "insert") (try (do
                                                                 (put-document this coll id val)
