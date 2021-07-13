@@ -27,11 +27,12 @@
   (start [this ctx colls] (.start (.eviction-channel this) ctx colls))
   (started? [this] (.started? (.eviction-channel this)))
   (stop [this] (if-not @stopped
+                 ;; Checks in-memory queue is empty
                  (do (while (not (.isEmpty (.queue this)))
                        (do
-                         (println "[EvictionChannelProxy] waiting for an empty queue")
+                         (println "[EvictionChannelProxy] waiting for an empty in-memory queue")
                          (Thread/sleep 1000)))
-                     (.stop (.eviction-channel this))
+                     (.stop (-> (.eviction-channel this) :channels first))
                      (reset! (.stopped this) true))))
   (stopped? [this] (true? @(.stopped this)))
   (insert [this coll-name unique-key user-value]
