@@ -1,15 +1,10 @@
 (ns lambdaroyal.memory.migration.mongodb
   (:require [lambdaroyal.memory.eviction.core :as evict]
-            [lambdaroyal.memory.core.context :refer :all]
+            [lambdaroyal.memory.core.context :as context]
             [lambdaroyal.memory.core.tx :refer :all]
             [lambdaroyal.memory.eviction.mongodb :as evict-mongodb]
             [lambdaroyal.memory.eviction.couchdb :as evict-couchdb]
             [lambdaroyal.memory.helper :refer :all]
-            [monger.core :as mg]
-            [monger.collection :as mc]
-            [monger.db :as md]
-            [com.ashafa.clutch :as clutch]
-            [cheshire.core :as json]
             [lambdaroyal.memory.helper :refer :all])
   (:import [lambdaroyal.memory.core ConstraintException]
            [lambdaroyal.memory.core.tx ReferrerIntegrityConstraint]
@@ -21,63 +16,49 @@
 ;; --------------------------------------------------------------------
 
 
-(reset! evict/verbose' true)
-
-(reset! evict-mongodb/verbose true)
-(reset! evict-couchdb/verbose true)
-
-(defn start-coll [ctx coll]
-  @(.start (-> @ctx coll :evictor) ctx [(get @ctx coll)]))
-
 ;; --------------------------------------------------------------------
 ;; 
 ;; --------------------------------------------------------------------
 
-(defn migrate-to-mongodb [ctx tx db]
-  (let [state (atom [])]
-    (future (let [res  (dosync (reduce
+(defn migrate-to-target-channel
+  "targetChannel is supposed to have a put-batch function with the parameters [channel coll-name unique-key user-value]"
+  [ctx put-batch-lambda]
+  (let [state (atom {:collections-done [] :finished false})]
+    (future (let [tx (create-tx ctx)
+                  res  (dosync (reduce
                                 (fn [acc coll]
                                   (conj acc [coll (doall (select tx coll))]))
-                                          ;; empty accumulator - we add on constantly
+                                ;; empty accumulator - we add on constantly
                                 []
-                                          ;; we iterate over this - coll is one element
+                                ;; we iterate over this - coll is one element
                                 (keys @ctx)))
 
-                            ;; I/O
+                  ;; I/O
+                  _ (println :count-res (count res))
                   _   (doseq [[coll records] res]
-                        (doseq [partition (partition-all 1000 records)]
-                          (let [json' (map #(assoc (last %) :_id (first %)) partition)
-                                _ (println :insert :coll coll :batch (count partition))
-                                _ (if (or (= coll :stock-order-item) (= coll "stock-order-item"))
-                                    (doseq [stock-order-item json']
-                                      (println :stock-order-item stock-order-item)
-                                      (mc/insert db coll stock-order-item)))
-                                ;; _ (doseq [rec json']
-                                ;;     (let [_ (println coll rec)
-                                ;;           _ (mc/insert db coll rec)]))
-                                ;; _ (mc/insert-batch db coll json')
-                                ]))
-                        (swap! state conj coll))]))
+                        (println :coll coll)
+                        (put-batch-lambda coll records)
+                        (reset! state (update @state :collections-done conj coll)))
+                  _ (println "finished with all collections")
+                  _ (reset! state (update @state :finished not))
+                  _ (println :final-state @state)]))
     state))
 
-;; (defn migrate-to-mongodb [ctx tx db]
-;;   (let [state (atom [])]
-;;     (let [res  (dosync (reduce
-;;                         (fn [acc coll]
-;;                           (conj acc [coll (doall (select tx coll))]))
-;;                                           ;; empty accumulator - we add on constantly
-;;                         []
-;;                                           ;; we iterate over this - coll is one element
-;;                         (keys @ctx)))
 
-;;                             ;; I/O
-;;           _   (doseq [[coll records] res]
-;;                 (doseq [partition (partition-all 1000 records)]
-;;                   (let [json' (map #(assoc (last %) :_id (first %)) partition)
-;;                         _ (println :insert :coll coll :batch (count partition))
-;;                         _ (if (or (= coll :cardmeta) (= coll "cardmeta"))
-;;                             (doseq [cardmeta json']
-;;                               (println :cardmeta cardmeta)
-;;                               (mc/insert db coll cardmeta)))]))
-;;                 (swap! state conj coll))])
-;;     state))
+
+(defn migrate-to-mongoDB [ctx & [mongo-dbname]]
+  (let [dbname (or mongo-dbname (System/getProperty "mongodb_dbname"))
+        _ (println :dbname dbname)
+        evictor-channel (evict-mongodb/create :db-name dbname)
+        meta-model {:order {:unique true :indexes [] :evictor evictor-channel :evictor-delay 1000}}
+        mongodb-ctx (context/create-context meta-model)
+        conn (evict-mongodb/get-connection (-> @mongodb-ctx :order :evictor :eviction-channel :url))
+        db (evict-mongodb/get-database (-> @mongodb-ctx :order :evictor :eviction-channel :db-name) conn)
+        _ (println :db-in-migrate-to-MongoDB db)
+        state (migrate-to-target-channel ctx  (fn [coll records] (evict-mongodb/put-batch evictor-channel coll records db)))]
+    state))
+
+(comment (defn migrate-to-couchDB [ctx targethannel db]
+           (let [state (migrate-to-target-channel ctx  (fn [coll records] (evict-couchdb/put-batch target-channel coll records db)))]
+             state)
+           ))

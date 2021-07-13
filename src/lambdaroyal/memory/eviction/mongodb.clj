@@ -1,6 +1,6 @@
 (ns ^{:doc "An Eviction Channel that uses a Mongo DB server to load persistent data and to backup all transaction to. The couch db server
 is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcouchdb.url or individually configured per eviction channel instance"}
- lambdaroyal.memory.eviction.mongodb
+    lambdaroyal.memory.eviction.mongodb
   (:require [lambdaroyal.memory.eviction.core :as evict]
             [lambdaroyal.memory.eviction.wal :as wal]
             [cheshire.core :as json]
@@ -40,7 +40,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
         _ (if (-> read-only deref true?) (log/info "MongoDB evictor works in READ-ONLY MODE. THIS IS NOT THE PRODUCTION MODE"))
         e (format "Cannot access Mongo DB server on %s. Did you start it?" url)]
     (if-not
-     (= 1.0 (get (mg/command db {:ping 1}) "ok"))
+        (= 1.0 (get (mg/command db {:ping 1}) "ok"))
       (throw (IllegalArgumentException. e)))))
 
 (defn get-database-url [prefix-url username password postfix-url]
@@ -55,10 +55,19 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
 (defn get-database-name []
   (System/getProperty "mongodb_dbname"))
 
+;; TODO Remove db as parameter in functions, use channel to get DB
 (defn- put-document [this coll-name unique-key user-value db]
   (if @verbose
     (println :put-document coll-name unique-key user-value))
   (mc/insert db coll-name (assoc user-value :_id unique-key)))
+
+(defn put-batch [this coll-name documents db]
+  (doseq [partition (partition-all 1000 documents)]
+    (let [json' (map #(assoc (last %) :_id (first %)) partition)
+          _  (do
+               (if @verbose
+                 (println :put-batch :coll coll-name :batch (count partition)))
+               (mc/insert-batch db coll-name json'))])))
 
 (defn- update-document [this coll-name unique-key user-value db]
   (if @verbose
@@ -134,10 +143,10 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
     (let [payload (wal/get-wal-payload :insert coll-name unique-key user-value)]
       (wal/insert-into-queue payload (:wal-queue @db-ctx))))
   (stop [this]
-        (.close (:wal-queue @db-ctx))
-        (mg/disconnect (:conn (:conn @db-ctx)))
-        (swap! (.stopped this) not)
-        (if @verbose (println :stop "MongoDB evictor-channel stopped")))
+    (.close (:wal-queue @db-ctx))
+    (mg/disconnect (:conn (:conn @db-ctx)))
+    (swap! (.stopped this) not)
+    (if @verbose (println :stop "MongoDB evictor-channel stopped")))
   (update [this coll-name unique-key old-user-value new-user-value]
     (let [payload (wal/get-wal-payload :update coll-name unique-key new-user-value)]
       (wal/insert-into-queue payload (:wal-queue @db-ctx))))
@@ -153,7 +162,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
   evict/EvictionChannelCompaction
   (compaction [this ctx]
     nil))
-  
+
 
 (defn create
   "provide custom url by calling this function with varargs :url \"https://username:password@account.cloudant.com\""
