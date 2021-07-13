@@ -27,7 +27,7 @@
            compressed-files-config-builder (.build compressed-files-config-builder)
 
            queue (FileQueue/synced)
-           queue (.name queue "popa")
+           queue (.name queue "couchdb-evictor-queue")
            queue (.folder queue (.getAbsolutePath (clojure.java.io/file (System/getProperty "java.io.tmpdir") "vlic/wal")))
            queue (.serializer queue Serializer/STRING)
            queue (.deserializer queue Deserializer/STRING)
@@ -38,14 +38,18 @@
              queue))
 
 
-(.add queue "faris")
-(.add queue "christian")
-(.poll queue)
 
-(def doc "{\"_id\":{\"$numberLong\":\"3964\"},\"amount\":{\"$numberInt\":\"6\"},\"vlicUser\":null,\"vlicCreatedBy\":null,\"vlicRev\":{\"$numberLong\":\"0\"},\"article\":{\"$numberLong\":\"1332\"},\"bestBefore\":\"20161014T000000.000Z\",\"batch\":\"CFI258\",\"vlicGtid\":{\"$numberLong\":\"64616772785\"},\"uom\":\"STK\",\"luType\":\"Bag\",\"creation-date\":\"2021-06-10\",\"ident\":\"3964\",\"vlicKey\":{\"$numberLong\":\"3964\"},\"origAmount\":{\"$numberLong\":\"7\"},\"location\":{\"$numberLong\":\"3964\"},\"vlicUnique\":\"zXV352ubu\",\"vlicMru\":{\"$numberLong\":\"1623330519612\"},\"vlicCreationTs\":{\"$numberLong\":\"1623330519612\"}}")
+(comment (.add queue "faris")
+         (.add queue "christian")
+         (.poll queue)
 
-(time (doseq [x (range 1024)]
-        (.add queue doc)))
+         (def doc "{\"_id\":{\"$numberLong\":\"3964\"},\"amount\":{\"$numberInt\":\"6\"},\"vlicUser\":null,\"vlicCreatedBy\":null,\"vlicRev\":{\"$numberLong\":\"0\"},\"article\":{\"$numberLong\":\"1332\"},\"bestBefore\":\"20161014T000000.000Z\",\"batch\":\"CFI258\",\"vlicGtid\":{\"$numberLong\":\"64616772785\"},\"uom\":\"STK\",\"luType\":\"Bag\",\"creation-date\":\"2021-06-10\",\"ident\":\"3964\",\"vlicKey\":{\"$numberLong\":\"3964\"},\"origAmount\":{\"$numberLong\":\"7\"},\"location\":{\"$numberLong\":\"3964\"},\"vlicUnique\":\"zXV352ubu\",\"vlicMru\":{\"$numberLong\":\"1623330519612\"},\"vlicCreationTs\":{\"$numberLong\":\"1623330519612\"}}")
 
-(doseq [x (range 256)]
-  (println (.poll queue)))
+         (time (doseq [x (range 1024)]
+                 (.add queue doc)))
+
+         (doseq [x (range 256)]
+           (println (.poll queue))))
+
+(println :done (.peek queue))
+

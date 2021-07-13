@@ -23,7 +23,7 @@
 (defn create-queue [prefix]
   (let [thread-name (.getName (Thread/currentThread))
         wal-files-config-builder (WalFilesConfig/builder)
-        wal-files-config-builder (.maxCount wal-files-config-builder (int 2048))
+        wal-files-config-builder (.maxCount wal-files-config-builder (Integer/MAX_VALUE))
         wal-files-config-builder (.build wal-files-config-builder)
         compressed-files-config-builder (CompressedFilesConfig/builder)
         compressed-files-config-builder (.maxSizeBytes compressed-files-config-builder (* 1024 1024 16))
@@ -40,7 +40,6 @@
         queue (.build queue)]
     (println "[create-queue] Queue was created in " thread-name)
     queue))
-
 (defn insert-into-queue [payload queue]
   (let [json' (json/generate-string payload)]
     (.add queue json')))
@@ -62,23 +61,29 @@
                           :else nil)))]
     (loop []
       (if-not @stopped-atom
-        (try
-          (if-let [queue-elem (.peek queue)]
-            (do
-              (reset! error-state (process-from-queue queue-elem))
-              (let [result @error-state]
-                (if (:success result)
-                  (do
-                    (println :success)
-                    (.poll queue))
-                  (println :error (:error-msg result))))
-              (recur))
-            (do
-              (Thread/sleep 1000)
-              (recur)))
-          (catch Exception e (println "[process-queue] error-in-process" e)
-                 (Thread/sleep 1000)
-                 (recur)))
+        (if-let [queue-elem (try (.peek queue) (catch Exception e (do
+                                                                    (println "[process-queue] Error in peeking queue")
+                                                                    (.printStackTrace e)
+                                                                    (Thread/sleep 4000)
+                                                                    nil
+                                                                    )))]
+          (do
+            (try
+              (do
+                (reset! error-state (process-from-queue queue-elem))
+                (let [result @error-state]
+                  (if (:success result)
+                    (.poll queue)                   
+                    (println "[process-queue] Error :" (:error-msg result)))))
+              (catch Exception e
+                (do
+                  (println "[process-queue] Error in polling queue")
+                  (.printStackTrace e)
+                  (Thread/sleep 4000))))
+            (recur))
+          (do
+            (Thread/sleep 1000)
+            (recur)))
         (println "[process-queue] Process queue stopped")))))
 
 (defn start-queue [queue stopped-atom process-from-queue]
