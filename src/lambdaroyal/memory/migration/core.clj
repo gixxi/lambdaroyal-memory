@@ -1,4 +1,4 @@
-(ns lambdaroyal.memory.migration.mongodb
+(ns lambdaroyal.memory.migration.core
   (:require [lambdaroyal.memory.eviction.core :as evict]
             [lambdaroyal.memory.core.context :as context]
             [lambdaroyal.memory.core.tx :refer :all]
@@ -48,17 +48,17 @@
 
 (defn migrate-to-mongoDB [ctx & [mongo-dbname]]
   (let [dbname (or mongo-dbname (System/getProperty "mongodb_dbname"))
-        _ (println :dbname dbname)
         evictor-channel (evict-mongodb/create :db-name dbname)
-        meta-model {:order {:unique true :indexes [] :evictor evictor-channel :evictor-delay 1000}}
-        mongodb-ctx (context/create-context meta-model)
-        conn (evict-mongodb/get-connection (-> @mongodb-ctx :order :evictor :eviction-channel :url))
-        db (evict-mongodb/get-database (-> @mongodb-ctx :order :evictor :eviction-channel :db-name) conn)
-        _ (println :db-in-migrate-to-MongoDB db)
+        url (evict-mongodb/get-database-url (System/getProperty "mongodb_preurl") (System/getProperty "mongodb_username") (System/getProperty "mongodb_password") (System/getProperty "mongodb_posturl"))
+        conn (evict-mongodb/get-connection url)
+        db (evict-mongodb/get-database dbname conn)
         state (migrate-to-target-channel ctx  (fn [coll records] (evict-mongodb/put-batch evictor-channel coll records db)))]
     state))
 
-(comment (defn migrate-to-couchDB [ctx targethannel db]
-           (let [state (migrate-to-target-channel ctx  (fn [coll records] (evict-couchdb/put-batch target-channel coll records db)))]
-             state)
-           ))
+(defn migrate-to-couchDB [ctx & [couchdb-url]]
+  (let [url (or couchdb-url (System/getProperty "couchdb.url"))
+        evictor-channel (evict-couchdb/create :url url)
+        meta-model {:order {:unique true :indexes [] :evictor evictor-channel :evictor-delay 1000}}
+        couchdb-ctx (context/create-context meta-model)
+        state (migrate-to-target-channel ctx  (fn [coll records] (evict-couchdb/put-batch evictor-channel coll records)))]
+    state))
