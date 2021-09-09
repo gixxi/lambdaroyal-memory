@@ -23,7 +23,7 @@
 (defn create-queue [prefix]
   (let [thread-name (.getName (Thread/currentThread))
         wal-files-config-builder (WalFilesConfig/builder)
-        wal-files-config-builder (.maxCount wal-files-config-builder (Integer/MAX_VALUE))
+        wal-files-config-builder (.maxCount wal-files-config-builder (int 100))
         wal-files-config-builder (.build wal-files-config-builder)
         compressed-files-config-builder (CompressedFilesConfig/builder)
         compressed-files-config-builder (.maxSizeBytes compressed-files-config-builder (* 1024 1024 16))
