@@ -110,7 +110,11 @@
              (-> m :unique-key true?)) false)))
 
 (defn create-unique-key 
-  "creates a unique key [key running] from a user space key using the running bigint index"
+  "creates a unique key [key running] from a user space key using the running bigint index key is a seq of attributes values for all attributes of the  index"
+  ([coll key primary-key]
+   (if (is-unique-key? key)
+     key
+     (with-meta [key primary-key] {:unique-key true})))
   ([coll key]
    (if (is-unique-key? key)
      key
@@ -157,7 +161,9 @@
   (applicable? [this key]
     "return true iff this index can be used to find values as per the given key.")
   (rating [this key]
-    "returns a natural number denoting an order by which two indexes can be compared in order to use one for a finding a certain key. the index with the lower rating result wins"))
+    "returns a natural number denoting an order by which two indexes can be compared in order to use one for a finding a certain key. the index with the lower rating result wins")
+  (get-data [this]
+    "For testing purposes"))
 
 (defprotocol ReverseIndex
   (rfind [this start-test start-key stop-test stop-key]
@@ -203,6 +209,9 @@
   (rating [this key]
     (count attributes))
 
+  (get-data [this]
+    (-> (.this this) :data deref))
+
   ;; BREAKING CHANGE - 20200914 Support for reverse order secondary index scans
   ReverseIndex
   (rfind [this start-test start-key stop-test stop-key]
@@ -219,21 +228,22 @@
 
   Constraint
   (application [this] #{:insert :delete})
-  (precommit [this ctx coll application key value]
+  (precommit [this ctx coll application primary-key value]
     (if (= :insert application)
-      (let [user-key (attribute-values value attributes)
-            unique-key (create-unique-key (.this this) user-key)]
+      (let [index-attr-value-seq (attribute-values value attributes)
+            unique-key (create-unique-key (.this this) index-attr-value-seq primary-key)]
         (if unique 
-          (if-let [match (first (.find-without-stop this >= user-key))]
-            (if (= user-key (attribute-values (-> match last deref) attributes))
-              (throw (create-constraint-exception coll key (format "unique index constraint violated on index %s when precommit value %s" attributes value)))))))))
+          (if-let [match (first (.find-without-stop this >= index-attr-value-seq))]
+            (if (= index-attr-value-seq (attribute-values (-> match last deref) attributes))
+              (throw (create-constraint-exception coll primary-key (format "unique index constraint violated on index %s when precommit value %s" attributes value)))))))))
   (postcommit [this ctx coll application coll-tuple]
     (cond
       (= :insert application)
       (let [this (.this this)
             user-value (-> coll-tuple last deref)
+            primary-key (-> coll-tuple first)
             user-key (attribute-values user-value attributes)
-            unique-key (create-unique-key this user-key)]
+            unique-key (create-unique-key this user-key primary-key)]
         (alter (-> coll-tuple last get-idx-keys) assoc name unique-key)
         (alter (:data this) assoc unique-key coll-tuple))
       (= :delete application)
