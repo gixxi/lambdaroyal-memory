@@ -124,7 +124,7 @@
   ([key]
    (if (is-unique-key? key)
      key
-     [key (bigint 1)])))
+     [key (bigint -1)])))
 
 (defn create-unique-stop-key 
   "creates a unique key [key running] that can be used for < and <= comparator"  
@@ -169,7 +169,7 @@
 
 (defprotocol ReverseIndex
   (rfind [this start-test start-key stop-test stop-key]
-    "takes all values from the collection using this index that fulfil (start-test start-key) until the collection is fully realized or (stop-test stop-key) is fulfilled. start-test as well as stop-test are of >,>=,<,<=. The returning sequence contains of items [[uk i] (ref v)], where uk is the user-key, i is the running index for the collection and (ref v) denotes a STM reference type instance to the value v. yields reverse order")
+    "takes all values from the collection using this index that fulfil (start-test start-key) until the collection is fully realized or (stop-test stop-key) is fulfilled. start-test as well as stop-test are of >,>=,<,<=. The retcrrning sequence contains of items [[uk i] (ref v)], where uk is the user-key, i is the running index for the collection and (ref v) denotes a STM reference type instance to the value v. yields reverse order")
   (rfind-without-stop [this start-test start-key]
     "takes all values from the collection using this index that fulfil (start-test start-key) until the collection is fully realized. start-test is of >,>=,<,<=. The returning sequence contains of items [[uk i] (ref v)], where uk is the user-key, i is the running index for the collection and (ref v) denotes a STM reference type instance to the value v. yields reverse order"))
 
