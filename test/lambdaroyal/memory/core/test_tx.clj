@@ -126,55 +126,55 @@
                 (count (select tx :order > 0)) => 800))))
 
 (facts "check insert into collection with indexes"
-       (let [ctx (create-context meta-model-with-indexes)
-             tx (create-tx ctx)
-             _ (dosync
-                (doseq [i (range 1000)]
-                  (insert tx :order i {:type :test :keyword i :client (mod i 2) :number i})))
-             idx-client (-> ctx deref :order :constraints deref :client)
-             idx-client-no (-> ctx deref :order :constraints deref :client-no)
-             timed-find (timed
-                         (.find idx-client >= [0] < [1])) 
-             timed-auto-find (timed
-                              (select tx :order [:client] >= [0] < [1]))
-             timed-select (timed
-                           (doall
-                            (filter #(= (-> % last :client) 0) (select tx :order >= 0))))
-             _ (println "count for timed-find" (-> timed-find last count))
-             _ (println "count for timed-auto-find" (-> timed-auto-find last count))
-             _ (println "count for select" (-> timed-select last count))
-             _ (println "time for find 500 of 1000 using index" (first timed-find))
-             _ (println "time for filter 500 of 1000" (first timed-select))
-             _ (println "time for auto-select 500 of 1000" (first timed-auto-find))]
-         (fact "index :client must be present" idx-client => truthy)
-         (fact "index :client-no must be present" idx-client-no => truthy)
-         (fact "index :client is applicable on search attributes '(:client)"
-               (.applicable? idx-client '(:client)) => truthy)
-         (fact "index :client is applicable on search attributes [:client]"
-               (.applicable? idx-client [:client]) => truthy)
-         (fact "index :client is applicable on search attributes [:foo]"
-               (.applicable? idx-client [:foo]) => falsey)
-         (fact "index :client-no is applicable on search attributes [:client]"
-               (.applicable? idx-client-no [:client]) => truthy)
-         (fact "index :client-no is applicable on search attributes [:client :no]"
-               (.applicable? idx-client-no [:client :no]) => truthy)
-         (fact "index :client-no is applicable on search attributes [:client]"
-               (.applicable? idx-client-no [:no :client]) => falsey)
-         (fact "index :client reveals 500 entries"
-               (count (.find idx-client >= [0] < [1])) => 500)
-         (fact "finding using index must outperform non-index filter by factor 5"
-               (< (* 5 (first timed-find))
-                  (first timed-select))
-               => truthy)
-         (fact "finding using auto-selected index must outperform non-index filter by factor 5"
-               (< (* 5 (first timed-auto-find))
-                  (first timed-select)))
-         (fact "find and select must reveal the same items"
-               (-> timed-find last count) =>
-               (-> timed-select last count))
-         (fact "find and auto-find must reveal the same items"
-               (-> timed-find last count) =>
-               (-> timed-auto-find last count))))
+  (let [ctx (create-context meta-model-with-indexes)
+        tx (create-tx ctx)
+        _ (dosync
+           (doseq [i (range 1000)]
+             (insert tx :order i {:type :test :keyword i :client (mod i 2) :number i})))
+        idx-client (-> ctx deref :order :constraints deref :client)
+        idx-client-no (-> ctx deref :order :constraints deref :client-no)
+        timed-find (timed
+                    (.find idx-client >= [0] < [1])) 
+        timed-auto-find (timed
+                         (select tx :order [:client] >= [0] < [1]))
+        timed-select (timed
+                      (doall
+                       (filter #(= (-> % last :client) 0) (select tx :order >= 0))))
+        _ (println "count for timed-find" (-> timed-find last count))
+        _ (println "count for timed-auto-find" (-> timed-auto-find last count))
+        _ (println "count for select" (-> timed-select last count))
+        _ (println "time for find 500 of 1000 using index" (first timed-find))
+        _ (println "time for filter 500 of 1000" (first timed-select))
+        _ (println "time for auto-select 500 of 1000" (first timed-auto-find))]
+    (fact "index :client must be present" idx-client => truthy)
+    (fact "index :client-no must be present" idx-client-no => truthy)
+    (fact "index :client is applicable on search attributes '(:client)"
+      (.applicable? idx-client '(:client)) => truthy)
+    (fact "index :client is applicable on search attributes [:client]"
+      (.applicable? idx-client [:client]) => truthy)
+    (fact "index :client is applicable on search attributes [:foo]"
+      (.applicable? idx-client [:foo]) => falsey)
+    (fact "index :client-no is applicable on search attributes [:client]"
+      (.applicable? idx-client-no [:client]) => truthy)
+    (fact "index :client-no is applicable on search attributes [:client :no]"
+      (.applicable? idx-client-no [:client :no]) => truthy)
+    (fact "index :client-no is applicable on search attributes [:client]"
+      (.applicable? idx-client-no [:no :client]) => falsey)
+    (fact "index :client reveals 500 entries"
+      (count (.find idx-client >= [0] < [1])) => 500)
+    (fact "finding using index must outperform non-index filter by factor 5"
+      (< (* 5 (first timed-find))
+         (first timed-select))
+      => truthy)
+    (fact "finding using auto-selected index must outperform non-index filter by factor 5"
+      (< (* 5 (first timed-auto-find))
+         (first timed-select)))
+    (fact "find and select must reveal the same items"
+      (-> timed-find last count) =>
+      (-> timed-select last count))
+    (fact "find and auto-find must reveal the same items"
+      (-> timed-find last count) =>
+      (-> timed-auto-find last count))))
 
 (facts "inserting and removing elements from an index-backed collection must alter back the index as well"
        (let [ctx (create-context meta-model-with-indexes)
@@ -434,60 +434,7 @@
          (fact "gtid of collection must match most recently used gtid of object"
            (-> coll :gtid deref) => (-> y last :vlicGtid)))))))
 
-(facts "check select and rselect ordering after insert into collection with indexes"
-  (let [ctx (create-context meta-model-with-indexes)
-        tx (create-tx ctx)
-        _ (dosync
-           (insert tx :order  6 {:client 1})
-           (insert tx :order  3 {:client 2})
-           (insert tx :order 2 {:client 2})
-           (insert tx :order 4 {:client 2})
-           (insert tx :order 7 {:client 3})
-           (insert tx :order 1 {:client 3}))
-        _ (doseq  [x (-> (applicable-indexes (-> @ctx :order) [:client]) first .get-data)]
-            (println :x x)
-            )
-        select-res  (select tx :order [:client] >= [0] <= [3])
-        _ (println :select-res)
-        _ (doseq [x select-res]
-            (println x))
-        rselect-res (rselect tx :order [:client] >= [0] <= [3])
-        _ (println :rselect-res)
-        _ (doseq [x rselect-res]
-            (println x))
-        rselect-res' (rselect tx :order [:client] <= [3] >= [0])]
-    (fact "select should be ordered according to index by ascending primary key" (map first select-res) => '(6 2 3 4 1 7))
-    (fact "rselect should be ordered by descending primary key" (map first rselect-res) => '(7 1 4 3 2 6))
-    (fact "rselect' should be ordered by descending primary key" (map first rselect-res) => '(7 1 4 3 2 6)))
 
-  ;; Testing for string primary keys
-  (let [ctx (create-context meta-model-with-indexes)
-        tx (create-tx ctx)
-        _ (dosync
-           (insert tx :order  6 {:client "1"})
-           (insert tx :order  5 {:client "2"})
-           (insert tx :order 1 {:client "2"})
-           (insert tx :order 2 {:client "2"})
-           (insert tx :order 3 {:client "3"})
-           (insert tx :order 4 {:client "3"}))
-        _ (doseq  [x (-> (applicable-indexes (-> @ctx :order) [:client]) first .get-data)]
-            (println :x x)
-            )
-        select-res  (select tx :order [:client] >= [0] <= [3])
-        _ (println :select-res)
-        _ (doseq [x select-res]
-            (println x))
-        rselect-res (rselect tx :order [:client] >= [0] <= [3])
-        _ (println :rselect-res)
-        _ (doseq [x rselect-res]
-            (println x))
-        rselect-res' (rselect tx :order [:client] <= [3] >= [0])]
-    (comment (fact "select should be ordered according to index by ascending primary key" (map first select-res) => '( 6 2 3 4 1 7))
-             (fact "rselect should be ordered by descending primary key" (map first rselect-res) => '(6 4 3 2 7 1))
-             (fact "rselect' should be ordered by descending primary key" (map first rselect-res) => '(6 4 3 2 7 1)))))
-
-;; test for string primary keys
-;; test for rselect
 
 
 

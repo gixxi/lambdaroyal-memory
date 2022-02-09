@@ -110,11 +110,13 @@
              (-> m :unique-key true?)) false)))
 
 (defn create-unique-key 
-  "creates a unique key [key running] from a user space key using the running bigint index key is a seq of attributes values for all attributes of the  index"
+  "creates a unique key [key running] from a user space key using the running bigint index key is a seq of attributes values for all attributes of the  index
+  We pass in primary key in order to sort indexed results by primary-key.
+  "
   ([coll key primary-key]
    (if (is-unique-key? key)
      key
-     (with-meta [key primary-key] {:unique-key true})))
+     (with-meta [key (if (string? primary-key) (alter (:running coll) inc) primary-key)] {:unique-key true})))
   ([coll key]
    (if (is-unique-key? key)
      key
@@ -126,10 +128,10 @@
 
 (defn create-unique-stop-key 
   "creates a unique key [key running] that can be used for < and <= comparator"  
-  [key]
-   (if (is-unique-key? key)
-     key
-     [key (bigint (Long/MAX_VALUE))]))
+  [key primary-key-is-string]
+  (if (is-unique-key? key)
+    key
+    [key (if primary-key-is-string (bigint (Long/MAX_VALUE)) (Long/MAX_VALUE) )]))
 
 (defn- stage-next-unique-key
   "returns the next key that would be used for the collection [coll] and the given user key [key]. this can be used to return bounded subsets that match only those 
@@ -176,13 +178,13 @@
   [value attributes]
   (vec (map #(get value %) attributes)))
 
-(defn- create-unique-key-for-comp [start-test key]
+(defn- create-unique-key-for-comp  [start-test key primary-key-is-string]
   (cond
-    (= (type start-test) (type >)) (create-unique-stop-key key)
+    (= (type start-test) (type >)) (create-unique-stop-key key primary-key-is-string)
     (= (type start-test) (type >=)) (create-unique-key key)
-    (= (type start-test) (type <=)) (create-unique-stop-key key) 
+    (= (type start-test) (type <=)) (create-unique-stop-key key primary-key-is-string) 
     (= (type start-test) (type <)) (create-unique-key key)
-    (= (type start-test) (type =)) (create-unique-stop-key key)
+    (= (type start-test) (type =)) (create-unique-stop-key key primary-key-is-string)
     :else (throw (IllegalArgumentException. (str "cannot use comparator " start-test " as argument to create a match-key")))))
 
 (deftype
@@ -191,13 +193,20 @@
   Index
   (find [this start-test start-key stop-test stop-key]
     (let [this (.this this)
-          start-key (create-unique-key-for-comp start-test start-key)
-          stop-key (create-unique-key-for-comp stop-test stop-key)
-          data (-> this :data deref)]
+          data (-> this :data deref)
+          primary-key-is-string (if-let [first-record (-> data first)]
+                                  (-> first-record first string?)
+                                  false)
+          start-key (create-unique-key-for-comp start-test start-key primary-key-is-string)
+          stop-key (create-unique-key-for-comp stop-test stop-key primary-key-is-string)]
       (map last (subseq (-> this :data deref) start-test start-key stop-test stop-key))))
   (find-without-stop [this start-test start-key]
     (let [this (.this this)
-          start-key (create-unique-key-for-comp start-test start-key)]
+          data (-> this :data deref)
+          primary-key-is-string (if-let [first-record (-> data first)]
+                                  (-> first-record first string?)
+                                  false)
+          start-key (create-unique-key-for-comp start-test start-key primary-key-is-string)]
       (map last (subseq (-> this :data deref) start-test start-key))))
   (applicable? [this key]
     (and
@@ -216,13 +225,21 @@
   ReverseIndex
   (rfind [this start-test start-key stop-test stop-key]
     (let [this (.this this)
-          start-key (create-unique-key-for-comp start-test start-key)
-          stop-key (create-unique-key-for-comp stop-test stop-key)
+          data (-> this :data deref)
+          primary-key-is-string (if-let [first-record (-> data first)]
+                                  (-> first-record first string?)
+                                  false)
+          start-key (create-unique-key-for-comp start-test start-key primary-key-is-string)
+          stop-key (create-unique-key-for-comp stop-test stop-key primary-key-is-string)
           data (-> this :data deref)]
       (map last (rsubseq (-> this :data deref) start-test start-key stop-test stop-key))))
   (rfind-without-stop [this start-test start-key]
     (let [this (.this this)
-          start-key (create-unique-key-for-comp start-test start-key)]
+          data (-> this :data deref)
+          primary-key-is-string (if-let [first-record (-> data first)]
+                                  (-> first-record first string?)
+                                  false)
+          start-key (create-unique-key-for-comp start-test start-key primary-key-is-string)]
       (map last (rsubseq (-> this :data deref) start-test start-key))))
 
 
