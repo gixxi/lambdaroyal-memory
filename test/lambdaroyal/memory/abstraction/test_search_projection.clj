@@ -105,10 +105,11 @@
     (let [proj (by-ric tx :line-item :article [(first apple)] :foreign-key :art1 :verbose true)]
       (fact "specific ric must reveal correct number of items" (count proj) => 1))
 
-    (let [apple-line-items (take 2 (filter #(= (first apple) (-> % last :article)) (select tx :line-item)))
-          banana-line-items (take 3 (filter #(= (first apple) (-> % last :article)) (select tx :line-item)))
+    (let [apple-line-items (take 2 (filter #(= (first apple) (-> % last :art1)) (select tx :line-item)))
+          
+          banana-line-items (take 3 (filter #(= (first banana) (-> % last :art1)) (select tx :line-item)))
           proj' (by-referencees tx :line-item :article (concat banana-line-items apple-line-items) :verbose true)
-          proj'' (proj tx (filter-xs :line-item (concat apple-line-items banana-line-items))
+          proj'' (proj tx (filter-xs :line-item (concat banana-line-items apple-line-items ))
                        (<<< :article :verbose true))]
       (fact "by-reference must reveal a set of articles without redundancies"
         proj' => [banana apple])
@@ -316,7 +317,7 @@
           banana-line-items (take 3 (filter #(= (first banana) (-> % last :art1)) (select tx :line-item)))
           _ (println :banana-line-items banana-line-items)
           proj' (by-referencees tx :line-item :article (concat banana-line-items apple-line-items) :verbose true)
-          proj'' (proj tx (filter-xs :line-item (concat apple-line-items banana-line-items))
+          proj'' (proj tx (filter-xs :line-item (concat banana-line-items apple-line-items ))
                        (<<< :article :verbose true))]
       (fact "by-reference must reveal a set of articles without redundancies"
         proj' => [banana apple])

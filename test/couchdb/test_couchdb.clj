@@ -1,11 +1,11 @@
-(ns lambdaroyal.couchdb.test-couchdb
+(ns couchdb.test-couchdb
   (:require [midje.sweet :refer :all]
-           [lambdaroyal.memory.eviction.core :as evict]
-           [lambdaroyal.memory.core.context :refer :all]
-           [lambdaroyal.memory.core.tx :refer :all]
-           [lambdaroyal.memory.eviction.couchdb :as evict-couchdb]
-           [lambdaroyal.memory.helper :refer :all]
-           [com.ashafa.clutch :as clutch])
+            [lambdaroyal.memory.eviction.core :as evict]
+            [lambdaroyal.memory.core.context :refer :all]
+            [lambdaroyal.memory.core.tx :refer :all]
+            [lambdaroyal.memory.eviction.couchdb :as evict-couchdb]
+            [lambdaroyal.memory.helper :refer :all]
+            [com.ashafa.clutch :as clutch])
   (:import [lambdaroyal.memory.core ConstraintException]
            [lambdaroyal.memory.core.tx ReferrerIntegrityConstraint]
            [org.apache.log4j BasicConfigurator]))
