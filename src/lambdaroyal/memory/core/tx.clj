@@ -480,6 +480,7 @@
         data (:data coll)]
     (if-let [x (get @data key)]
       (do
+        (decorate-coll-with-gtid coll (get-gtid))
         (process-constraints :delete precommit ctx coll key @x)
         (alter data dissoc key)
         (process-constraints :delete postcommit ctx coll x)
