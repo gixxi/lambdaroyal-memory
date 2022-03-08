@@ -307,7 +307,7 @@
                                  ((if-not reverse' tx/select-from-coll tx/rselect-from-coll) 
                                   source-coll 
                                   [(.foreign-key ric)]
-                                  >= 
+                                  (if reverse' <= >=) 
                                   [key]))))
                  ;;one seq with the results for each key
                  xs ((if parallel pmap map) find-fn keys)

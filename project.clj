@@ -1,4 +1,4 @@
-(defproject org.clojars.gixxi/lambdaroyal-memory "1.1.5Beta"
+(defproject org.clojars.gixxi/lambdaroyal-memory "1.1.7Beta"
   :description "STM-based in-memory database storing persistent data structures"
   :url "https://github.com/gixxi/lambdaroyal-memory"
   :license {:name "FreeBSD License"
@@ -20,6 +20,6 @@
                              javax.jms/jms
                              com.sun.jdmk/jmxtools
                              com.sun.jmx/jmxri]]]
-  :profiles {:dev {:dependencies [[midje "1.9.2"]]
+  :profiles {:dev {:dependencies [[midje "1.9.4"]]
                    :plugins [[lein-midje "3.2.1"]]}}
   :aot [lambdaroyal.memory.core lambdaroyal.memory.eviction.core lambdaroyal.memory.helper])

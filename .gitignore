@@ -11,3 +11,9 @@ pom.xml.asc
 .lein-failures
 *.xlsx#
 *.csv#
+.classpath
+.clj-kondo
+.lsp/
+.project
+.settings/
+tmp/

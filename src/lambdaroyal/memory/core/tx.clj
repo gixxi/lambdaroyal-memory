@@ -110,7 +110,13 @@
              (-> m :unique-key true?)) false)))
 
 (defn create-unique-key 
-  "creates a unique key [key running] from a user space key using the running bigint index"
+  "creates a unique key [key running] from a user space key using the running bigint index key is a seq of attributes values for all attributes of the  index
+  We pass in primary key in order to sort indexed results by primary-key.
+  "
+  ([coll key primary-key]
+   (if (is-unique-key? key)
+     key
+     (with-meta [key (if (string? primary-key) (alter (:running coll) inc) primary-key)] {:unique-key true})))
   ([coll key]
    (if (is-unique-key? key)
      key
@@ -118,14 +124,14 @@
   ([key]
    (if (is-unique-key? key)
      key
-     [key (bigint 1)])))
+     [key (bigint -1)])))
 
 (defn create-unique-stop-key 
   "creates a unique key [key running] that can be used for < and <= comparator"  
-  [key]
-   (if (is-unique-key? key)
-     key
-     [key (bigint (Long/MAX_VALUE))]))
+  [key primary-key-is-string]
+  (if (is-unique-key? key)
+    key
+    [key (if primary-key-is-string (bigint (Long/MAX_VALUE)) (Long/MAX_VALUE) )]))
 
 (defn- stage-next-unique-key
   "returns the next key that would be used for the collection [coll] and the given user key [key]. this can be used to return bounded subsets that match only those 
@@ -157,11 +163,13 @@
   (applicable? [this key]
     "return true iff this index can be used to find values as per the given key.")
   (rating [this key]
-    "returns a natural number denoting an order by which two indexes can be compared in order to use one for a finding a certain key. the index with the lower rating result wins"))
+    "returns a natural number denoting an order by which two indexes can be compared in order to use one for a finding a certain key. the index with the lower rating result wins")
+  (get-data [this]
+    "For testing purposes"))
 
 (defprotocol ReverseIndex
   (rfind [this start-test start-key stop-test stop-key]
-    "takes all values from the collection using this index that fulfil (start-test start-key) until the collection is fully realized or (stop-test stop-key) is fulfilled. start-test as well as stop-test are of >,>=,<,<=. The returning sequence contains of items [[uk i] (ref v)], where uk is the user-key, i is the running index for the collection and (ref v) denotes a STM reference type instance to the value v. yields reverse order")
+    "takes all values from the collection using this index that fulfil (start-test start-key) until the collection is fully realized or (stop-test stop-key) is fulfilled. start-test as well as stop-test are of >,>=,<,<=. The retcrrning sequence contains of items [[uk i] (ref v)], where uk is the user-key, i is the running index for the collection and (ref v) denotes a STM reference type instance to the value v. yields reverse order")
   (rfind-without-stop [this start-test start-key]
     "takes all values from the collection using this index that fulfil (start-test start-key) until the collection is fully realized. start-test is of >,>=,<,<=. The returning sequence contains of items [[uk i] (ref v)], where uk is the user-key, i is the running index for the collection and (ref v) denotes a STM reference type instance to the value v. yields reverse order"))
 
@@ -170,13 +178,13 @@
   [value attributes]
   (vec (map #(get value %) attributes)))
 
-(defn- create-unique-key-for-comp [start-test key]
+(defn- create-unique-key-for-comp  [start-test key primary-key-is-string]
   (cond
-    (= (type start-test) (type >)) (create-unique-stop-key key)
+    (= (type start-test) (type >)) (create-unique-stop-key key primary-key-is-string)
     (= (type start-test) (type >=)) (create-unique-key key)
-    (= (type start-test) (type <=)) (create-unique-stop-key key) 
+    (= (type start-test) (type <=)) (create-unique-stop-key key primary-key-is-string) 
     (= (type start-test) (type <)) (create-unique-key key)
-    (= (type start-test) (type =)) (create-unique-stop-key key)
+    (= (type start-test) (type =)) (create-unique-stop-key key primary-key-is-string)
     :else (throw (IllegalArgumentException. (str "cannot use comparator " start-test " as argument to create a match-key")))))
 
 (deftype
@@ -185,13 +193,20 @@
   Index
   (find [this start-test start-key stop-test stop-key]
     (let [this (.this this)
-          start-key (create-unique-key-for-comp start-test start-key)
-          stop-key (create-unique-key-for-comp stop-test stop-key)
-          data (-> this :data deref)]
+          data (-> this :data deref)
+          primary-key-is-string (if-let [first-record (-> data first)]
+                                  (-> first-record first string?)
+                                  false)
+          start-key (create-unique-key-for-comp start-test start-key primary-key-is-string)
+          stop-key (create-unique-key-for-comp stop-test stop-key primary-key-is-string)]
       (map last (subseq (-> this :data deref) start-test start-key stop-test stop-key))))
   (find-without-stop [this start-test start-key]
     (let [this (.this this)
-          start-key (create-unique-key-for-comp start-test start-key)]
+          data (-> this :data deref)
+          primary-key-is-string (if-let [first-record (-> data first)]
+                                  (-> first-record first string?)
+                                  false)
+          start-key (create-unique-key-for-comp start-test start-key primary-key-is-string)]
       (map last (subseq (-> this :data deref) start-test start-key))))
   (applicable? [this key]
     (and
@@ -203,37 +218,49 @@
   (rating [this key]
     (count attributes))
 
+  (get-data [this]
+    (-> (.this this) :data deref))
+
   ;; BREAKING CHANGE - 20200914 Support for reverse order secondary index scans
   ReverseIndex
   (rfind [this start-test start-key stop-test stop-key]
     (let [this (.this this)
-          start-key (create-unique-key-for-comp start-test start-key)
-          stop-key (create-unique-key-for-comp stop-test stop-key)
+          data (-> this :data deref)
+          primary-key-is-string (if-let [first-record (-> data first)]
+                                  (-> first-record first string?)
+                                  false)
+          start-key (create-unique-key-for-comp start-test start-key primary-key-is-string)
+          stop-key (create-unique-key-for-comp stop-test stop-key primary-key-is-string)
           data (-> this :data deref)]
       (map last (rsubseq (-> this :data deref) start-test start-key stop-test stop-key))))
   (rfind-without-stop [this start-test start-key]
     (let [this (.this this)
-          start-key (create-unique-key-for-comp start-test start-key)]
+          data (-> this :data deref)
+          primary-key-is-string (if-let [first-record (-> data first)]
+                                  (-> first-record first string?)
+                                  false)
+          start-key (create-unique-key-for-comp start-test start-key primary-key-is-string)]
       (map last (rsubseq (-> this :data deref) start-test start-key))))
 
 
   Constraint
   (application [this] #{:insert :delete})
-  (precommit [this ctx coll application key value]
+  (precommit [this ctx coll application primary-key value]
     (if (= :insert application)
-      (let [user-key (attribute-values value attributes)
-            unique-key (create-unique-key (.this this) user-key)]
+      (let [index-attr-value-seq (attribute-values value attributes)
+            unique-key (create-unique-key (.this this) index-attr-value-seq primary-key)]
         (if unique 
-          (if-let [match (first (.find-without-stop this >= user-key))]
-            (if (= user-key (attribute-values (-> match last deref) attributes))
-              (throw (create-constraint-exception coll key (format "unique index constraint violated on index %s when precommit value %s" attributes value)))))))))
+          (if-let [match (first (.find-without-stop this >= index-attr-value-seq))]
+            (if (= index-attr-value-seq (attribute-values (-> match last deref) attributes))
+              (throw (create-constraint-exception coll primary-key (format "unique index constraint violated on index %s when precommit value %s" attributes value)))))))))
   (postcommit [this ctx coll application coll-tuple]
     (cond
       (= :insert application)
       (let [this (.this this)
             user-value (-> coll-tuple last deref)
+            primary-key (-> coll-tuple first)
             user-key (attribute-values user-value attributes)
-            unique-key (create-unique-key this user-key)]
+            unique-key (create-unique-key this user-key primary-key)]
         (alter (-> coll-tuple last get-idx-keys) assoc name unique-key)
         (alter (:data this) assoc unique-key coll-tuple))
       (= :delete application)
@@ -453,6 +480,7 @@
         data (:data coll)]
     (if-let [x (get @data key)]
       (do
+        (decorate-coll-with-gtid coll (get-gtid))
         (process-constraints :delete precommit ctx coll key @x)
         (alter data dissoc key)
         (process-constraints :delete postcommit ctx coll x)
