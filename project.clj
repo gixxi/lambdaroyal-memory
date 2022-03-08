@@ -1,4 +1,4 @@
-(defproject org.clojars.gixxi/lambdaroyal-memory "1.1.7Beta"
+(defproject org.clojars.gixxi/lambdaroyal-memory "1.1.8Beta"
   :description "STM-based in-memory database storing persistent data structures"
   :url "https://github.com/gixxi/lambdaroyal-memory"
   :license {:name "FreeBSD License"
