@@ -20,6 +20,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
 
 ;; change this to true for testing purposes
 (def read-only (atom false))
+(def avoid-read-in-collections (atom #{}))
 
 (def flush-log-format "FL %3s %3s %12d | %30s %-20s %s")
 (defn- log-try [method collection id rev]
@@ -145,7 +146,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
            (doall 
             (map
              #(let [db (get-database this %)
-                    docs (clutch/all-documents db {:include_docs true})
+                    docs (if-not (contains? @avoid-read-in-collections (keyword %)) (clutch/all-documents db {:include_docs true}) [])
                     tx (create-tx ctx :force true)]
                 (doseq [doc docs]
                   (let [existing (:doc doc)                         

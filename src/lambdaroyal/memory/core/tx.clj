@@ -7,6 +7,8 @@
 
 (def ^:const debug (atom true))
 
+(def tree-verbose (atom false))
+
 ;;use this contains information on the old user-value during card alterings
 (declare ^{:dynamic true} *alter-context*)
 
@@ -567,17 +569,19 @@
    (let [coll (get (-> tx :context deref) coll-name)]
      (map user-scope-tuple (rselect-from-coll coll attributes start-test start-key)))))
 
-
 (defn tree-referencees
   "takes a document [user-scope-tuple] from the collection with name [coll-name] and gives back a hash-map denoting all foreign-key referenced documents. The key in hash-map is [coll-name user-scope-key]."
   [tx coll-name user-scope-tuple & opts]
   {:pre [(contains? (-> tx :context deref) coll-name)]}
   (let [opts (apply hash-map opts)]
-    (loop [todo #{[coll-name user-scope-tuple]} done (or (:cache opts) {})]
+    (loop [todo #{[coll-name user-scope-tuple]} 
+           done (or (:cache opts) {})
+           depth 0]
       (if (empty? todo)
         done
         ;;else
-        (let [ctx (-> tx :context deref)
+        (let [_ (if @tree-verbose (println "[tree-referencees]" :depth depth :coll-name coll-name :id (if user-scope-tuple (first user-scope-tuple))))
+              ctx (-> tx :context deref)
               coll (get ctx coll-name)
               next (first todo)
               constraints (map last (-> coll :constraints deref))
@@ -599,10 +603,11 @@
                                [(.foreign-coll ric) (select-first tx (.foreign-coll ric) foreign-key)])))
                     done
                     rics)]
-          (recur (rest todo) done))))))
+          (recur (rest todo) done (inc depth)))))))
 
 (defn- replace-in-tree [tx coll-name user-scope-tuple referencees & opts]
-  (let [{use-attr-name :use-attr-name} (if opts (apply hash-map opts) {})
+  ;; done is {[coll-name (first user-scope-tuple) (.foreign-key ric)]}
+  (let [{use-attr-name :use-attr-name done :done :or {done (atom #{})}} (if opts (apply hash-map opts) {})
         referencees (apply tree-referencees tx coll-name user-scope-tuple opts)
         ctx (-> tx :context deref)
         coll (get ctx coll-name)
@@ -618,9 +623,15 @@
         ;;get a map of key->referencee
         merge-map (reduce
                    (fn [acc ric]
-                     (assoc acc (if-not use-attr-name (.foreign-coll ric) (.foreign-key ric))
-                            (apply replace-in-tree tx (.foreign-coll ric) (last (get referencees [(.foreign-coll ric) (get (last user-scope-tuple) (.foreign-key ric))])) referencees opts)
-                            ))
+                     (let [done-key [coll-name (first user-scope-tuple) (.foreign-key ric)]]
+                       (if-not (contains? @done done-key)
+                         (do
+                           (swap! done conj done-key)
+                           (assoc acc (if-not use-attr-name (.foreign-coll ric) (.foreign-key ric))
+                                  (apply replace-in-tree tx (.foreign-coll ric) (last (get referencees [(.foreign-coll ric) (get (last user-scope-tuple) (.foreign-key ric))])) referencees opts)))
+                         (do
+                           (if @tree-verbose (println "[replace-in-tree] stop at" done-key))
+                           acc))))
                    {} rics)]
     [(first user-scope-tuple) (assoc 
                                (merge (last user-scope-tuple) merge-map)
@@ -632,4 +643,6 @@
   {:pre [(contains? (-> tx :context deref) coll-name)]}
   (let [{use-attr-name :use-attr-name, :or {use-attr-name false}} (if opts (try (apply hash-map opts)
                                                                                 (catch Throwable t {})) {})]
-    (replace-in-tree tx coll-name user-scope-tuple tree-referencees :cache {} :use-attr-name use-attr-name)))
+    (replace-in-tree tx coll-name user-scope-tuple tree-referencees :cache {} :use-attr-name use-attr-name :done (atom #{}))))
+
+
