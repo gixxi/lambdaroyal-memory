@@ -6,6 +6,9 @@
   (:refer-clojure :exclude [find])
   (:gen-class))
 
+
+(def context-verbose (atom false))
+
 (spec/def ::referencing-coll keyword?)
 (spec/def ::referencing-key keyword?)
 (spec/def ::symbol #(instance? clojure.lang.Symbol %))
@@ -270,32 +273,41 @@
 (defn- dependency-model 
   "returns a list of order names orderd by referential integrity constraints. input is a sequence of context collection. output is a list of collection names"
   [colls]
-  (map 
-   (fn [coll]
-     (list
-      (:name coll)
-      (disj
-       (set (map #(.foreign-coll %) (filter #(instance? ReferrerIntegrityConstraint %) (-> coll :constraints deref vals))))
-       (:name coll))))
-   colls))
+  (sort-by (comp count last)
+           (map 
+            (fn [coll]
+              [(:name coll)
+               (disj
+                (set (map #(.foreign-coll %) (filter #(instance? ReferrerIntegrityConstraint %) (-> coll :constraints deref vals))))
+                (:name coll))])
+            colls)))
 
 (defn- partition-dependency-model 
   "returns [xs,xs'] from a NON-EMPTY dependency model, where xs is a set of colls that have only fulfilled dependencies or no dependencies at all and xs' still have dependencies"
   [dependency-model]
   (let [xs (set (map first (filter #(-> % last empty?) dependency-model)))]
-    [xs (map
-         (fn [[k v]]
-           (list k (clojure.set/difference v xs)))
-         (remove (fn [[k _]] (contains? xs k)) dependency-model))]))
+    [(sort (into [] xs)) (sort-by first (map
+                                                 (fn [[k v]]
+                                                   (list k (clojure.set/difference v xs)))
+                                                 (remove (fn [[k _]] (contains? xs k)) dependency-model)))]))
 
 (defn dependency-model-ordered [colls]
   (let [dependency-model (dependency-model colls)]
-    (loop [[xs xs'] (partition-dependency-model dependency-model) res []]
-      (cond
-        (empty? xs') (apply conj res xs)
-        (empty? xs) (throw (IllegalStateException. 
-                            (str 
-                             "failed to derive non-dependent partition from dependency model"
-                             (apply str (interpose "," (map first dependency-model)))
-                             \newline "problem in " (into [] xs'))))
-        :else (recur (partition-dependency-model xs') (apply conj res xs))))))
+    (if @context-verbose (do
+                           (println (format "[dependency-model-ordered] initial"))
+                           (doseq [x dependency-model]
+                             (println (format "\tdependency for %s" (pr-str x))))))
+    (loop [[xs xs'] (partition-dependency-model dependency-model) res [] round 1]
+      (do
+        (if @context-verbose (do
+                               (println (format "[dependency-model-ordered] # %s no dependencies for %s" round (pr-str (apply str (interpose "," xs)))))
+                               (doseq [x xs']
+                                 (println (format "\tdependency for %s" (pr-str x))))))
+        (cond
+          (empty? xs') (concat res xs)
+          (empty? xs) (throw (IllegalStateException. 
+                              (str 
+                               "failed to derive non-dependent partition from dependency model"
+                               (apply str (interpose "," (map first dependency-model)))
+                               \newline "problem in " (into [] xs'))))
+          :else (recur (partition-dependency-model xs') (concat res xs) (inc round)))))))

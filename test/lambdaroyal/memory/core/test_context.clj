@@ -78,6 +78,7 @@
                (-> @ctx :interaction) => truthy)))
 
 (facts "facts abount context creation with referential integrity constraints (RIC)"
+       (reset! context-verbose true)
        (let [rics (map (fn [[coll constraint]] [coll constraint]) (referential-integrity-constraint-factory meta-model-with-ric))
              ctx (create-context meta-model-with-ric)]
          (fact "creating a context from a meta-model" ctx -> truthy)
@@ -151,10 +152,10 @@
 
 (facts "testing the y-combinator to used build the dependency model"
        (fact "reveal proper collection order using the convenience function"
-             (dependency-model-ordered (-> (create-context meta-model-with-ric) deref vals)) => '(:type :order :part-order :line-item))
+             (dependency-model-ordered (-> (create-context meta-model-with-ric) deref vals)) => '(:order :type :part-order :line-item))
        (fact "reveal proper collection order using a model with just one collection"
              (dependency-model-ordered (-> (create-context {:sys_state {:indexes []}}) deref vals)) => '(:sys_state)))
 
 (facts "testing the y-combinator to used build the dependency model - with self references"
        (fact "reveal proper collection order using the convenience function"
-             (dependency-model-ordered (-> (create-context meta-model-with-ric-and-selfreference) deref vals)) => '(:type :order :part-order :line-item))) 
+             (dependency-model-ordered (-> (create-context meta-model-with-ric-and-selfreference) deref vals)) => '(:order :type :part-order :line-item))) 

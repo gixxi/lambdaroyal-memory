@@ -145,7 +145,8 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
            "read-in collections"
            (doall 
             (map
-             #(let [db (get-database this %)
+             #(let [_ (print (format "read in collection %s ... " %))
+                    db (get-database this %)
                     docs (if-not (contains? @avoid-read-in-collections (keyword %)) (clutch/all-documents db {:include_docs true}) [])
                     tx (create-tx ctx :force true)]
                 (doseq [doc docs]
@@ -153,7 +154,7 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
                         user-scope-tuple (dosync
                                           (insert-raw tx % (:unique-key existing) existing))]
                     (swap! (.revs this) assoc [% (first user-scope-tuple)] (:_rev existing))))
-                (println (format "collection %s contains %d documents" % (count docs))))
+                (println (format "contains %d documents" (count docs))))
              colls)))
           (reset! (.started this) true)))))
   (started? [this] @(.started this))
