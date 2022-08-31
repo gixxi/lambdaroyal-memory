@@ -81,3 +81,20 @@
     (fact "select should be ordered according to order of insertion" (map first select-res) => '("6" "5" "1" "2" "3" "4"))
     (fact "rselect should be ordered according to order of insertion" (map first rselect-res) => '("4" "3" "2" "1" "5"))))
 
+(facts "Check ordering of records by boolean index"
+  (let [ctx (create-context meta-model-with-indexes)
+        tx (create-tx ctx)
+        _ (dosync
+           (insert tx :order  0 {:client 1 :bool true})
+           (insert tx :order  6 {:client 1})
+           (insert tx :order  3 {:client 2 :bool false})
+           (insert tx :order 2 {:client 2 :bool true})
+           (insert tx :order 4 {:client 2})
+           (insert tx :order 7 {:client 3 :bool false})
+           (insert tx :order 1 {:client 3 :bool false}))
+        
+        select-res  (select tx :order [:bool] >= [true])
+        rselect-res (rselect tx :order [:bool] < [true])]
+    (fact "select should be ordered according to index by ascending primary key" (map first select-res) => '(0 2))
+    (fact "rselect should be ordered by descending primary key" (map first rselect-res) => '(7 3 1 6 4))))
+
