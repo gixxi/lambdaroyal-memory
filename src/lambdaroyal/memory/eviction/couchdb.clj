@@ -59,7 +59,6 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
         db-name (if (.prefix channel) (str (.prefix channel) "_" db-name) db-name)]
     (clutch/get-database (get-database-url (.url channel) db-name))))
 
-
 (defn- is-update-conflict [e]
   (and (instance? clojure.lang.ExceptionInfo e) 
        (if-let [body (-> e ex-data :body)]
@@ -68,34 +67,41 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
 (defn- put-document 
   "inserts a document to the couchdb instance referenced by the CouchEvictionChannel [channel]. if a version conflict occurs then this function trys again"
   [channel coll-name unique-key user-value]
-  (let [rev-key [coll-name unique-key]
-        rev (get @(:revs channel) rev-key)
-        doc (assoc user-value :_id (str unique-key) :unique-key unique-key)
-        doc (if rev (assoc doc :_rev rev) doc)
-        put (fn [doc] 
-              (let [flush-idx' (log-try "PUT" coll-name unique-key (:_rev doc))]
-                (try
-                  (let [result (clutch/put-document (get-database channel coll-name) doc)]
-                    (do 
-                      (swap! (.revs channel) assoc rev-key (:_rev result))
-                      (log-result flush-idx' true "PUT" coll-name unique-key (:_rev doc))
-                      true))
-                  (catch Exception e
-                    (if (is-update-conflict e) 
-                      false
-                      (do
-                        (log-result flush-idx' false "PUT" coll-name unique-key (:_rev doc))
-                        (throw e)))))))]
-    (try
-      (loop [doc doc]
-        (if-not (put doc)
-          (let [existing (clutch/get-document (get-database channel coll-name) (str unique-key))
-                doc (assoc doc :_rev (:_rev existing))]
-            (do
-              (log/warn (format "update conflict on %s. try again." doc))
-              (recur doc)))))
-      (catch Exception e
-        (log/fatal (format "failed to put document %s to couchdb. " doc) e)))))
+  (let [;; 2022-08-31 BIG BUG _realized sneaked into the evictor, rendering certain PUTS without result, we not realizing this
+        user-value (apply dissoc
+                          user-value
+                          (filter #(.startsWith (name %) "_") (keys user-value)))]
+    (let [rev-key [coll-name unique-key]
+          rev (get @(:revs channel) rev-key)
+          doc (assoc user-value :_id (str unique-key) :unique-key unique-key)
+          doc (if rev (assoc doc :_rev rev) doc)
+
+
+
+          put (fn [doc] 
+                (let [flush-idx' (log-try "PUT" coll-name unique-key (:_rev doc))]
+                  (try
+                    (let [result (clutch/put-document (get-database channel coll-name) doc)]
+                      (do 
+                        (swap! (.revs channel) assoc rev-key (:_rev result))
+                        (log-result flush-idx' true "PUT" coll-name unique-key (:_rev doc))
+                        true))
+                    (catch Exception e
+                      (if (is-update-conflict e) 
+                        false
+                        (do
+                          (log-result flush-idx' false "PUT" coll-name unique-key (:_rev doc))
+                          (throw e)))))))]
+      (try
+        (loop [doc doc]
+          (if-not (put doc)
+            (let [existing (clutch/get-document (get-database channel coll-name) (str unique-key))
+                  doc (assoc doc :_rev (:_rev existing))]
+              (do
+                (log/warn (format "update conflict on %s. try again." doc))
+                (recur doc)))))
+        (catch Exception e
+          (log/fatal (format "failed to put document %s to couchdb. " doc) e))))))
 
 (defn- delete-document 
   "deletes a document from the couchdb"
