@@ -33,7 +33,7 @@ Maven
 
 lambdaroyal-memory is an in-memory database, that primarily recides in the volatile main memory. Either occasionally or always write operations are flushed to a persistent backup storage.
 
-Right now we support couchdb as backup storage. The combination can be considered stable and is used in production since more than a year.
+Right now we support couchdb as well as MongoDB backup storage. The combination can be considered stable and is used in production since more than 8 years.
 
 ## Speed
 
