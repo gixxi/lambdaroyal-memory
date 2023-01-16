@@ -507,7 +507,8 @@
   "returns the first key/value pair of the collection [coll-name] that matches the key [key] or nil"
   [tx coll-name key]
   {:pre [(contains? (-> tx :context deref) coll-name)]}
-  (if-let [f (find-first (get (-> tx :context deref) coll-name) key)]
+  (if-let [f (if (some? key) 
+               (find-first (get (-> tx :context deref) coll-name) key))]
     (user-scope-tuple f)))
 
 (defn select
