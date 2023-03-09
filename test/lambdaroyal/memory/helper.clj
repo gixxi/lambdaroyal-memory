@@ -1,8 +1,18 @@
 (ns lambdaroyal.memory.helper
   (:require [clojure.tools.logging :as log])
+  (:import [java.text SimpleDateFormat])
   (:gen-class))
 
 (def log-count (atom 0))
+
+(defn append-to-timeseries [name & values]
+  (if (not= "false" (System/getenv "lambdaroyal.memory.traceteststats.disable"))
+    (let [dir (or (System/getenv "lambdaroyal.memory.traceteststats.dir") "test/stats/")
+          filename (str dir name ".dat")
+          format (SimpleDateFormat. "yyyy-MM-dd HH:mm:ss")]
+      (with-open [w (clojure.java.io/writer filename :append true)]
+        (.write w (apply str (.format format (new java.util.Date)) \; values))
+        (.write w "\n")))))
 
 (defmacro timed [form]
   "evaluates parameter form to obj and gives back the tuple (delay obj) where delay denotes the floating point number of ms needed to eval the form"

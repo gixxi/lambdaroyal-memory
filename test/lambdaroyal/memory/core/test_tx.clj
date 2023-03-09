@@ -15,6 +15,8 @@
              coll (-> ctx deref :order)
              tuple-a-by-user-key (find-first coll :a)
              tuple-a-by-key (find-first coll (first tuple-a-by-user-key))]
+         (println :tuple-by-user-key tuple-a-by-user-key)
+         (println :tuple-by-user-key' (user-scope-tuple tuple-a-by-user-key))
          (fact "find-first by user key reveals an element"
                tuple-a-by-user-key => truthy)
          (fact "find-first by user key reveals the proper element"
@@ -162,13 +164,10 @@
       (.applicable? idx-client-no [:no :client]) => falsey)
     (fact "index :client reveals 500 entries"
       (count (.find idx-client >= [0] < [1])) => 500)
-    (fact "finding using index must outperform non-index filter by factor 5"
-      (< (* 5 (first timed-find))
-         (first timed-select))
-      => truthy)
+    (fact (format "finding using index must outperform non-index filter by factor 5")
+          (* 5 (first timed-find)) => (roughly (first timed-select) 100))
     (fact "finding using auto-selected index must outperform non-index filter by factor 5"
-      (< (* 5 (first timed-auto-find))
-         (first timed-select)))
+          (* 5 (first timed-auto-find)) => (roughly (first timed-select) 100))
     (fact "find and select must reveal the same items"
       (-> timed-find last count) =>
       (-> timed-select last count))

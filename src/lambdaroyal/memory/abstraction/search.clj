@@ -300,10 +300,11 @@
            (let [keys (into #{} keys)
                  xs ((if-not reverse' tx/select tx/rselect) tx source)]
              (filter #(contains? keys (get (last %) (.foreign-key ric))) xs))
-           (let [find-fn (fn [key]
+           (let [user-scope-tuple' (tx/get-scoped-user-scope-tuple source-coll)
+                 find-fn (fn [key]                           
                            (take-while  
                             #(= key (get (last %) (.foreign-key ric)))
-                            (map tx/user-scope-tuple
+                            (map user-scope-tuple'
                                  ((if-not reverse' tx/select-from-coll tx/rselect-from-coll) 
                                   source-coll 
                                   [(.foreign-key ric)]

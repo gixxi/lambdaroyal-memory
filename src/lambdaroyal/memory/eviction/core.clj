@@ -27,10 +27,10 @@
   (stopped? [this] (true? @(.stopped this)))
   (insert [this coll-name unique-key user-value]
     (if (-> this .eviction-channel .started?)
-      (.add (.queue this) [:insert eviction-channel coll-name unique-key user-value])))
+      (.add (.queue this) [:insert eviction-channel coll-name unique-key (dissoc user-value :vlicCalculated)])))
   (update [this coll-name unique-key old-user-value new-user-value]
     (if (-> this .eviction-channel .started?)
-      (.add (.queue this) [:update eviction-channel coll-name unique-key old-user-value new-user-value])))
+      (.add (.queue this) [:update eviction-channel coll-name unique-key old-user-value (dissoc new-user-value :vlicCalculated)])))
   (delete [this coll-name unique-key old-user-value]
     (if (-> this .eviction-channel .started?)
       (.add (.queue this) [:delete eviction-channel coll-name unique-key old-user-value])))

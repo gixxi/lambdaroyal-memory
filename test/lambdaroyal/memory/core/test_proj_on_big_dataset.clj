@@ -24,24 +24,53 @@
 (defn- insert-future [ctx]
   "spawns a thread that starts 100 consecutive transactions, each transaction consists of 10 inserts"
   (future
-    (let [tx (create-tx ctx)]
+    (let [tx (create-tx ctx)
+          types (list "alpha" "beta" "gamma" "delta" nil nil)]
       (do
         (doseq [p (range 50000)]
           (dosync
-           (insert tx :article p {:client (rand-int 100)})))
+           (insert tx :article p {:client (rand-int 100) :type (rand-nth types)})))
         (let [articles (select tx :article)]
-          (doseq [p (range 50)]
+          (doseq [p (range 5000)]
             (dosync
              (insert tx :stock p {:article (first (rand-nth articles))}))))))))
 
-+(let [ctx (create-context meta-model)
+(defn- type-decorator [tx [k {article :article}]]
+  (let [article (select-first tx :article article)]
+    (if-let [type (-> article last :type)]
+      [type true]
+      [nil false])))
+
+(let [ctx (create-context meta-model)
        tx (create-tx ctx)
-       bulk (timed @(insert-future ctx))
-       _ (println "test took (ms) " (first bulk))]
-   (fact "max time for insert" (first bulk) => (roughly 0 15000))
-   (fact "correct number of articles " (count (select tx :article)) => 50000)
-   (println :start-search)
-   (fact "timed search took less than 150 msec" 
-         (first 
-          (timed 
-           (proj tx (filter-xs :article (take 5000 (select tx :article))) (>>> :stock :verbose true :parallel true)))) => (roughly 0 15)))
+       insert (timed @(insert-future ctx))
+]
+  (println (format "insert took (ms) %s and resulted in %s articles and %s stocks" (first insert) (count (select tx :article)) (count (select tx :stock))))
+  (let [projection (timed 
+                    (count (proj tx (filter-xs :article (take 5000 (select tx :article))) (>>> :stock :verbose true :parallel true))))]
+    (println (format "projection found %s records and took (ms) %s" (last projection) (first projection)))
+    (fact "max time for insert" (first insert) => (roughly 0 30000))
+    (fact "correct number of articles " (count (select tx :article)) => 50000)
+    (fact "max time for projection" (first projection) => (roughly 0 40))
+
+    (append-to-timeseries "proj_on_big_data_set" (apply str (interpose ";" [(first insert) (first projection)]))))
+  (with-calculated-field-lambdas {:stock {:type (partial type-decorator tx)}}
+    (let [articles (take 5000 (select tx :article))
+          projection (timed 
+                      (count (proj tx (filter-xs :article articles) (>> :stock (fn [stock] (= "alpha" (-> stock last :type))) :verbose true :parallel true))))
+          ;; must return the same as if filtering first the articles
+          projection' (timed
+                       (count (proj tx (filter-xs :article (filter #(= "alpha" (-> % last :type)) articles)) (>>> :stock :verbose true :parallel true))))]
+      (fact "we shoud find some articles at all with type alpha" (> (last projection') 0) => true)
+      (fact "we should find the same number of articles when filtering on the calculated attribute" (last projection) => (last projection')))))
+
+
+
+
+
+
+
+
+
+
+
