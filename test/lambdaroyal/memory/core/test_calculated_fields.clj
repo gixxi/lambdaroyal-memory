@@ -45,8 +45,7 @@
 
 (let [ctx (create-context meta-model)
        tx (create-tx ctx)
-       insert (timed @(insert-future ctx))
-]
+       insert (timed @(insert-future ctx))]
   (println (format "insert took (ms) %s and resulted in %s articles and %s stocks" (first insert) (count (select tx :article)) (count (select tx :stock))))
   (with-calculated-field-lambdas {:stock {:type (partial type-decorator tx)
                                           :is-beta (partial is-beta-decorator tx)}}
@@ -71,7 +70,24 @@
       (fact "every stock stemming from article with nil"
             (every? (fn [[k {:keys [type vlicCalculated]}]]
                       (and (nil? type)
-                           (nil? vlicCalculated))) nils) => true))))
+                           (nil? vlicCalculated))) nils) => true)
+      (let [alphas (proj tx (filter-xs :article (filter #(= "alpha" (-> % last :type)) (select tx :article)))
+                         (>>> :stock))]
+        (fact "found alphas using proj" (empty? alphas) => false)
+        (fact "every stock stemming from alpha article using projection denotes the proper type and :vlicCalculated attribute"
+              
+              (every? (fn [[k {:keys [type vlicCalculated]}]]
+                        (and (= "alpha" type)
+                             (= (list :type) vlicCalculated)))
+                      alphas) => true))
+)))
+
+
+
+
+
+
+
 
 
 
