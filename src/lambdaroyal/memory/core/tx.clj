@@ -418,7 +418,7 @@
    (if (bound? #'*calculated-field-lambdas*)
      (if-let [scoped-calculated-field-lambdas (and (some? *calculated-field-lambdas*) (get *calculated-field-lambdas* collection))]
        (partial user-scope-tuple scoped-calculated-field-lambdas)))
-(partial user-scope-tuple)))
+   (partial user-scope-tuple)))
 
 (defn user-scope-key
   "takes a user-scope-tuple into account and returns the user scope key that was provided when storing this document"

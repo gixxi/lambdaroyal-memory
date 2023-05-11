@@ -1,7 +1,7 @@
 (ns 
     ^{:doc "tests calculating attribute values on the fly"
       :author "christian.meichsner@live.com"}
-  lambdaroyal.memory.core.test-calculated-fields
+  lambdaroyal.memory.core.test-calculated-fields-with-proj
   (:require [midje.sweet :refer :all]
             [lambdaroyal.memory.core.tx :refer :all]
             [lambdaroyal.memory.abstraction.search :refer :all]
@@ -49,28 +49,25 @@
   (println (format "insert took (ms) %s and resulted in %s articles and %s stocks" (first insert) (count (select tx :article)) (count (select tx :stock))))
   (with-calculated-field-lambdas {:stock {:type (partial type-decorator tx)
                                           :is-beta (partial is-beta-decorator tx)}}
-    (let [stock (first (select tx :stock))]
-      (println :stock stock))
-    (let [alphas (filter #(= "alpha" (-> % last :type')) (select tx :stock))
-          betas (filter #(= "beta" (-> % last :type')) (select tx :stock))
-          nils (filter #(-> % last :type' nil?) (select tx :stock))]
-      (println :beta (first betas))
-      (fact "there are some alphas" (empty? alphas) => false)
-      (fact "there are some betas" (empty? betas) => false)
-      (fact "there are some nils" (empty? nils) => false)
-      (fact "every stock stemming from alpha article denotes the proper type and :vlicCalculated attribute"
+
+    (let [alphas (proj tx (filter-xs :article (filter #(= "alpha" (-> % last :type)) (select tx :article)))
+                       (>>> :stock :ratio-full-scan 1.2))]
+      (fact "found alphas using proj" (empty? alphas) => false)
+      (let [alphas (proj tx (filter-xs :article (filter #(= "alpha" (-> % last :type)) (select tx :article)))
+                         (>>> :stock))]
+        (fact "found alphas using proj" (empty? alphas) => false)
+        (fact "every stock stemming from alpha article using projection denotes the proper type and :vlicCalculated attribute"
+              
+              (every? (fn [[k {:keys [type vlicCalculated]}]]
+                        (and (= "alpha" type)
+                             (= (list :type) vlicCalculated)))
+                      alphas) => true))
+      (fact "every stock stemming from alpha article using projection denotes the proper type and :vlicCalculated attribute with a full table scan force"
+            
             (every? (fn [[k {:keys [type vlicCalculated]}]]
                       (and (= "alpha" type)
-                           (= (list :type) vlicCalculated))) alphas) => true)
-      (fact "every stock stemming from beta article denotes the proper type and :vlicCalculated attribute"
-            (every? (fn [[k {:keys [type vlicCalculated is-beta]}]]
-                      (and (= "beta" type)
-                           (true? is-beta)
-                           (= (list :is-beta :type) vlicCalculated))) betas) => true)
-      (fact "every stock stemming from article with nil"
-            (every? (fn [[k {:keys [type vlicCalculated]}]]
-                      (and (nil? type)
-                           (nil? vlicCalculated))) nils) => true))))
+                           (= (list :type) vlicCalculated)))
+                    alphas) => true))))
 
 
 
