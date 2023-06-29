@@ -11,15 +11,6 @@
   (:import [java.text SimpleDateFormat])
   (:gen-class))
 
-(defn append-to-timeseries [name & values]
-  (if (not= "false" (System/getenv "lambdaroyal.memory.traceteststats.disable"))
-    (let [dir (or (System/getenv "lambdaroyal.memory.traceteststats.dir") "test/stats/")
-          filename (str dir name ".dat")
-          format (SimpleDateFormat. "yyyy-MM-dd HH:mm:ss")]
-      (with-open [w (clojure.java.io/writer filename :append true)]
-        (.write w (apply str (.format format (new java.util.Date)) \; values))
-        (.write w "\n")))))
-
 ;;we try to be idempotent, so we don't use mutable models from other workspaces here
 (def ^:const threads 10)
 

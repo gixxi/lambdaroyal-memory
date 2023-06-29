@@ -1,4 +1,4 @@
-(ns lambdaroyal.memory.core.test-reverse_seq 
+(ns lambdaroyal.memory.core.test-reverse-seq 
   "tests index lockups and range scans in reverse order"
   (:require [midje.sweet :refer :all]
             [lambdaroyal.memory.core.tx :refer :all]
@@ -64,11 +64,11 @@
                (count (.rfind idx-client >= [0] < [1])) => 500)
 
          (fact "[REVERSE SEQ]index :client reveals 500 entries"
-               (distinct (map (comp :client last user-scope-tuple) (.rfind idx-client >= [0] < [1]))) => '(0))
+               (distinct (map (comp :client last #(user-scope-tuple %)) (.rfind idx-client >= [0] < [1]))) => '(0))
          (fact "[REVERSE SEQ]index :client reveals 500 entries"
-               (distinct (map (comp :client last user-scope-tuple) (.rfind idx-client >= [1] = [1]))) => '(1))
+               (distinct (map (comp :client last #(user-scope-tuple %)) (.rfind idx-client >= [1] = [1]))) => '(1))
          (fact "[REVERSE SEQ]index :client reveals 500 entries in reverse orer"
-               (map (comp first user-scope-tuple) (.rfind idx-client >= [1] = [1])) => (reverse (range 1 998 2)))
+               (map (comp first #(user-scope-tuple %)) (.rfind idx-client >= [1] = [1])) => (reverse (range 1 998 2)))
          (fact "[REVERSE SEQ]finding using index must outperform non-index filter by factor 5"
                (< (* 5 (first timed-find))
                   (first timed-select))

@@ -7,8 +7,7 @@
             [lambdaroyal.memory.abstraction.search :refer :all]
             [lambdaroyal.memory.core.context :refer :all]
             [lambdaroyal.memory.helper :refer :all]
-            [clojure.core.async :refer [>! alts!! timeout chan go]])
-  (:import [java.text SimpleDateFormat]))
+            [clojure.core.async :refer [>! alts!! timeout chan go]]))
 
 ;;we try to be idempotent, so we don't use mutable models from other workspaces here
 
@@ -39,15 +38,6 @@
              (insert tx :part-order (format "%d:%s" idx "A") {:order idx :type 1 :sort :first})
              (insert tx :part-order (format "%d:%s" idx "B") {:order idx :type 1 :sort :first}))))))
     prefix))
-
-(defn append-to-timeseries [name & values]
-  (if (not= "false" (System/getenv "lambdaroyal.memory.traceteststats.disable"))
-    (let [dir (or (System/getenv "lambdaroyal.memory.traceteststats.dir") "test/stats/")
-          filename (str dir name ".dat")
-          format (SimpleDateFormat. "yyyy-MM-dd HH:mm:ss")]
-      (with-open [w (clojure.java.io/writer filename :append true)]
-        (.write w (apply str (.format format (new java.util.Date)) \; values))
-        (.write w "\n")))))
 
 (facts "check timing constraints inserting 10000 orders and 20000 partorders with 10 futures, each future executing 1000 transaction a 10+20 inserts"
   (let [ctx (create-context meta-model)

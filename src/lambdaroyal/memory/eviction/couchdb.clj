@@ -167,10 +167,10 @@ is supposed to run on http://localhost:5984 or as per JVM System Parameter -Dcou
   (stopped? [this] nil)
   (insert [this coll-name unique-key user-value]
     (if (and @(.started this) (-> read-only deref false?))
-      (put-document this coll-name unique-key user-value)))
+      (put-document this coll-name unique-key (dissoc user-value :vlicCalculated))))
   (update [this coll-name unique-key old-user-value new-user-value]
     (if (and @(.started this) (-> read-only deref false?))
-      (put-document this coll-name unique-key new-user-value)))
+      (put-document this coll-name unique-key (dissoc new-user-value :vlicCalculated))))
   (delete [this coll-name unique-key old-user-value]
     (if (and @(.started this) (-> read-only deref false?))
       (delete-document this coll-name unique-key)))

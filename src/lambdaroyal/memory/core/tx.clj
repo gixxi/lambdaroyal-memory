@@ -15,6 +15,17 @@
 ;;thread-local global transaction id
 (declare  ^{:dynamic true} *gtid*)
 
+(declare ^{:dynamic true :doc "thread-local hierarchial datastructure that maps collections to map', where map' associates an attribute k to a function 
+(λ [user-scope-tuple] -> [v' c]) that can map the value of attribute k to the value v' if necessary. If the calculation was necessary the c denotes true. If and only if there was any calculation necessary then the user-scope-tuple will contain an association vlicCalculated: xs where x:xs is an attribute a value was calculated before."} *calculated-field-lambdas*)
+
+(defmacro with-calculated-field-lambdas [lambdas & body]
+  `(if (bound? #'*calculated-field-lambdas*)
+     (do
+       ~@body)
+     (binding [*calculated-field-lambdas* ~lambdas]
+       ~@body)))
+
+
 (def gtid (atom (- (System/currentTimeMillis) (.getTime (.parse (java.text.SimpleDateFormat. "ddMMyyyy") "25052019")))))
 
 ;;this macro sets the gtid for the outermost call
@@ -379,19 +390,42 @@
   (doseq [c (filter #(contains? (.application %) application) (-> coll :constraints deref vals))]
     (apply f c ctx coll application attr)))
 
-(defn user-scope-tuple 
-  "within a collection a key-value-pair consists of k -> r, where k is [uk i], r is a STM reference to document v, uk
+(defn user-scope-tuple "within a collection a key-value-pair consists of k -> r, where k is [uk i], r is a STM reference to document v, uk
   is the key the user used to store document v. i is a running index that allows
   the uk being non-unique with respect to the collection. since v is wrapped by an STM reference we provide back the _raw_ value v in order to prevent the user from altering the value using STM mechanism directly, since this would bypass the secondary indexes and make them invalid."
-  [[k r]]
-  [k @r])
+;;^clojure.lang.PersistentVector
+  ([^clojure.lang.PersistentVector x]
+   (let [[k r] x]
+     [k @r]))
+  ( [scoped-calculated-field-lambdas ^clojure.lang.PersistentVector x]
+   (let [[k r] x]     
+     (if scoped-calculated-field-lambdas
+       (let [user-scope-tuple [k @r]]
+         [k (reduce
+             (fn [acc [attribute lambda]]
+               (let [[calculated is-calculated] (lambda user-scope-tuple)]
+                 (if is-calculated
+                   (assoc acc attribute calculated :vlicCalculated (if-let [vlicCalculated (:vlicCalculated acc)]
+                                                                     (cons attribute vlicCalculated)
+                                                                     (list attribute)))
+                   acc)))
+             (last user-scope-tuple)
+             scoped-calculated-field-lambdas)])
+       [k @r]))))
+
+(defn get-scoped-user-scope-tuple [collection]
+  (or 
+   (if (bound? #'*calculated-field-lambdas*)
+     (if-let [scoped-calculated-field-lambdas (and (some? *calculated-field-lambdas*) (get *calculated-field-lambdas* collection))]
+       (partial user-scope-tuple scoped-calculated-field-lambdas)))
+   (partial user-scope-tuple)))
 
 (defn user-scope-key
   "takes a user-scope-tuple into account and returns the user scope key that was provided when storing this document"
-  [user-scope-tuple]
+  [^clojure.lang.PersistentVector user-scope-tuple]
   (-> user-scope-tuple first))
 
-(defn- insert' [tx coll-name key value]
+(defn- insert' ^clojure.lang.PersistentVector [tx ^clojure.lang.Keyword coll-name key ^clojure.lang.PersistentArrayMap value]
   "inserts a document [value] by key [key] into collection with name [coll-name] using the transaction [tx]. the transaction can be created from context using (create-tx [context])"
   {:pre [(contains? (-> tx :context deref) coll-name)]}
   (let [ctx (-> tx :context deref)
@@ -403,39 +437,40 @@
       (process-constraints :insert precommit ctx coll key value)
       (alter data assoc key (last coll-tuple))
       (process-constraints :insert postcommit ctx coll coll-tuple)
-      (user-scope-tuple coll-tuple))))
+      (let [user-scope-tuple' (get-scoped-user-scope-tuple coll-name)]
+       (user-scope-tuple' coll-tuple)))))
 
-(defn insert "inserts a document [value] by key [key] into collection with name [coll-name] using the transaction [tx]. the transaction can be created from context using (create-tx [context])" [tx coll-name key value]
-  (insert' tx coll-name key (decorate-with-gtid value)))
+(defn ^clojure.lang.PersistentVector insert "inserts a document [value] by key [key] into collection with name [coll-name] using the transaction [tx]. the transaction can be created from context using (create-tx [context])" [tx ^clojure.lang.Keyword coll-name key ^clojure.lang.PersistentArrayMap value]
+  (insert' tx coll-name key (decorate-with-gtid (dissoc value :vlicCalculated))))
 
 (defn insert-raw "ONLY FOR INTERNAL PURPOSE" [tx coll-name key value]
-  (insert' tx coll-name key value))
+  (insert' tx coll-name key (dissoc value :vlicCalculated)))
 
 
 (defn- alter-index
   ;;RISK
-  [idx coll-tuple old-user-value new-user-value]
+  [idx coll-tuple ^clojure.lang.PersistentArrayMap old-user-value ^clojure.lang.PersistentArrayMap new-user-value]
   (let [old-attribute-values (attribute-values old-user-value (.attributes idx))
-        new-attribute-values (attribute-values new-user-value (.attributes idx))]
+        new-attribute-values (attribute-values new-user-value (.attributes idx))
+        alter-sorted-map' (fn [sorted-map old-key new-key coll-tuple]
+                            (assoc (dissoc sorted-map old-key) new-key coll-tuple))
+        ]
     (if 
         (not= 0 (compare old-attribute-values new-attribute-values))
       (let [idx-keys (-> coll-tuple last get-idx-keys)]
         (if-let [idx-key (get @idx-keys (.name idx))]
           (let [new-unique-index-key (create-unique-key (.this idx) new-attribute-values)]
             (do
-              ;;remove old index tuple
-              (alter (-> idx .this :data) dissoc idx-key)
-              ;;add new index tuple
-              (alter (-> idx .this :data) assoc new-unique-index-key coll-tuple)
+              (alter (-> idx .this :data) alter-sorted-map' idx-key new-unique-index-key coll-tuple)
               ;;alter reverse lookup
               (alter idx-keys assoc (.name idx) new-unique-index-key)
               (comment (print (.name idx) :old old-user-value :new new-user-value :old-a old-attribute-values :new-a new-attribute-values :idx-keys idx-keys))
               ))
           (throw (RuntimeException. (format "FATAL RUNTIME EXCEPTION: index %s is inconsistent, failed to remove key %s from value-wrapper %s. Failed to reverse lookup index key." name coll-tuple))))))))
 
-(defn alter-document
+(defn ^clojure.lang.PersistentArrayMap alter-document
   "alters a document given by [user-scope-tuple] within the collection denoted by [coll-name] by applying the function [fn] with the parameters [args] to it. An user-scope-tuple can be obtained using find-first, find and select. returns the new user value"
-  [tx coll-name user-scope-tuple fn & args]
+  [tx ^clojure.lang.Keyword coll-name ^clojure.lang.PersistentVector user-scope-tuple fn & args]
   {:pre [(contains? (-> tx :context deref) coll-name)]}
   (let [ctx (-> tx :context deref)
         coll (get ctx coll-name)
@@ -475,7 +510,7 @@
 
 (defn delete 
   "deletes a document by key [key] from collection with name [coll-name] using the transaction [tx]. the transaction can be created from context using (create-tx [context]. returns number of removed items."
-  [tx coll-name key]
+  [tx ^clojure.lang.Keyword coll-name key]
   {:pre [(contains? (-> tx :context deref) coll-name)]}
   (let [ctx (-> tx :context deref)
         coll (get ctx coll-name)
@@ -509,7 +544,8 @@
   {:pre [(contains? (-> tx :context deref) coll-name)]}
   (if-let [f (if (some? key) 
                (find-first (get (-> tx :context deref) coll-name) key))]
-    (user-scope-tuple f)))
+    (let [user-scope-tuple' (get-scoped-user-scope-tuple coll-name)]
+      (user-scope-tuple' f))))
 
 (defn select
   "test(s) one of <, <=, > or
@@ -517,26 +553,31 @@
   which (test (.. sc comparator (compare ek key)) 0) is true. iff just [tx] and coll-name are given, then we return all tupels."
   ([tx coll-name] ;; full table scan
    {:pre [(contains? (-> tx :context deref) coll-name)]}
-   (let [all (-> (get  (-> tx :context deref) coll-name) :data deref)]
-     (map user-scope-tuple all)))
+   (let [all (-> (get  (-> tx :context deref) coll-name) :data deref)
+         user-scope-tuple' (get-scoped-user-scope-tuple coll-name)]
+     (map user-scope-tuple' all)))
   ([tx coll-name start-test start-key] ;; forward index scan
    {:pre [(contains? (-> tx :context deref) coll-name)]}
-   (let [sub (subseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test start-key)]
-     (map user-scope-tuple sub)))
+   (let [sub (subseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test start-key)
+         user-scope-tuple' (get-scoped-user-scope-tuple coll-name)]
+     (map user-scope-tuple' sub)))
 
   ([tx coll-name start-test start-key stop-test stop-key] ;; forward index scan with stop condition
    {:pre [(contains? (-> tx :context deref) coll-name)]}
-   (let [sub (subseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test start-key stop-test stop-key)]
-     (map user-scope-tuple sub)))
+   (let [sub (subseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test start-key stop-test stop-key)
+         user-scope-tuple' (get-scoped-user-scope-tuple coll-name)]
+     (map user-scope-tuple' sub)))
 
   ([tx coll-name attributes start-test start-key stop-test stop-key]
    {:pre [(contains? (-> tx :context deref) coll-name)]}
-   (let [coll (get (-> tx :context deref) coll-name)]
-     (map user-scope-tuple (select-from-coll coll attributes start-test start-key stop-test stop-key))))
+   (let [coll (get (-> tx :context deref) coll-name)
+         user-scope-tuple' (get-scoped-user-scope-tuple coll-name)]
+     (map user-scope-tuple' (select-from-coll coll attributes start-test start-key stop-test stop-key))))
   ([tx coll-name attributes start-test start-key]
    {:pre [(contains? (-> tx :context deref) coll-name)]}
-   (let [coll (get (-> tx :context deref) coll-name)]
-     (map user-scope-tuple (select-from-coll coll attributes start-test start-key)))))
+   (let [coll (get (-> tx :context deref) coll-name)
+         user-scope-tuple' (get-scoped-user-scope-tuple coll-name)]
+     (map user-scope-tuple' (select-from-coll coll attributes start-test start-key)))))
 
 (defn rselect
   "REVERSE ORDER SELECT. test(s) one of <, <=, > or
@@ -546,29 +587,34 @@
   ;; full table scan
   ([tx coll-name]
    {:pre [(contains? (-> tx :context deref) coll-name)]}
-   (let [all (-> (get  (-> tx :context deref) coll-name) :data deref)]
-     (map user-scope-tuple (rseq all))))
+   (let [all (-> (get  (-> tx :context deref) coll-name) :data deref)
+         user-scope-tuple' (get-scoped-user-scope-tuple coll-name)]
+     (map user-scope-tuple' (rseq all))))
 
   ;; forward primary index scan
   ([tx coll-name start-test start-key]
    {:pre [(contains? (-> tx :context deref) coll-name)]}
-   (let [sub (rsubseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test start-key)]
-     (map user-scope-tuple sub)))
+   (let [sub (rsubseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test start-key)
+         user-scope-tuple' (get-scoped-user-scope-tuple coll-name)]
+     (map user-scope-tuple' sub)))
 
   ;; forward primary index scan with stop condition
   ([tx coll-name start-test start-key stop-test stop-key]
    {:pre [(contains? (-> tx :context deref) coll-name)]}
-   (let [sub (rsubseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test start-key stop-test stop-key)]
-     (map user-scope-tuple sub)))
+   (let [sub (rsubseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test start-key stop-test stop-key)
+         user-scope-tuple' (get-scoped-user-scope-tuple coll-name)]
+     (map user-scope-tuple' sub)))
 
   ([tx coll-name attributes start-test start-key stop-test stop-key]
    {:pre [(contains? (-> tx :context deref) coll-name)]}
-   (let [coll (get (-> tx :context deref) coll-name)]
-     (map user-scope-tuple (rselect-from-coll coll attributes start-test start-key stop-test stop-key))))
+   (let [coll (get (-> tx :context deref) coll-name)
+         user-scope-tuple' (get-scoped-user-scope-tuple coll-name)]
+     (map user-scope-tuple' (rselect-from-coll coll attributes start-test start-key stop-test stop-key))))
   ([tx coll-name attributes start-test start-key]
    {:pre [(contains? (-> tx :context deref) coll-name)]}
-   (let [coll (get (-> tx :context deref) coll-name)]
-     (map user-scope-tuple (rselect-from-coll coll attributes start-test start-key)))))
+   (let [coll (get (-> tx :context deref) coll-name)
+         user-scope-tuple' (get-scoped-user-scope-tuple coll-name)]
+     (map user-scope-tuple' (rselect-from-coll coll attributes start-test start-key)))))
 
 (defn tree-referencees
   "takes a document [user-scope-tuple] from the collection with name [coll-name] and gives back a hash-map denoting all foreign-key referenced documents. The key in hash-map is [coll-name user-scope-key]."

@@ -275,7 +275,10 @@
                  (= (.foreign-key %) foreign-key)) %) rics))))
 
 (defn by-ric
-  "returns all user scope tuples from collection [source] that refer to collection [target] by some ReferrerIntegrityConstraint and have foreign-key of the sequence [keys]. the sequence is supposed to be redundancy free (set). opts might contain :ratio-full-scan iff greater or equal to the ratio (count keys / number of tuples in target of [0..1]) then the source collection is fully scanned for matching tuples rather than queried by index lookups. If not given, 0.4 is the default barrier. If the :foreign-key is given within the opts then we explicitly seach for a ric with a certain foreign-key. :abs-full-scan iff the number of keys is greater than the abs-full-scan, then the source collection is fully scanned for matching tuples rather and queries by index lookups"
+  "returns all user scope tuples from collection [source] that refer to collection [target] by some ReferrerIntegrityConstraint and have foreign-key of the sequence [keys]. the sequence is supposed to be redundancy free (set). opts might contain 
+  :ratio-full-scan iff greater or equal to the ratio (count keys / number of tuples in target of [0..1]) then the source collection is fully scanned for matching tuples rather than queried by index lookups. If not given, 0.4 is the default barrier. 
+  :foreign-key is given within the opts then we explicitly seach for a ric with a certain foreign-key. 
+  :abs-full-scan iff the number of keys is greater than the abs-full-scan, then the source collection is fully scanned for matching tuples rather and queries by index lookups"
   ([tx source target keys & opts]
    (with-meta 
      (let [opts (if opts (apply hash-map opts))
@@ -300,10 +303,11 @@
            (let [keys (into #{} keys)
                  xs ((if-not reverse' tx/select tx/rselect) tx source)]
              (filter #(contains? keys (get (last %) (.foreign-key ric))) xs))
-           (let [find-fn (fn [key]
+           (let [user-scope-tuple' (tx/get-scoped-user-scope-tuple source)
+                 find-fn (fn [key]                           
                            (take-while  
                             #(= key (get (last %) (.foreign-key ric)))
-                            (map tx/user-scope-tuple
+                            (map user-scope-tuple'
                                  ((if-not reverse' tx/select-from-coll tx/rselect-from-coll) 
                                   source-coll 
                                   [(.foreign-key ric)]
