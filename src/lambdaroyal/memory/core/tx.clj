@@ -452,21 +452,21 @@
   [idx coll-tuple ^clojure.lang.PersistentArrayMap old-user-value ^clojure.lang.PersistentArrayMap new-user-value]
   (let [old-attribute-values (attribute-values old-user-value (.attributes idx))
         new-attribute-values (attribute-values new-user-value (.attributes idx))
+        primary-key (-> coll-tuple first)
         alter-sorted-map' (fn [sorted-map old-key new-key coll-tuple]
                             (assoc (dissoc sorted-map old-key) new-key coll-tuple))
         ]
-    (if 
-        (not= 0 (compare old-attribute-values new-attribute-values))
-      (let [idx-keys (-> coll-tuple last get-idx-keys)]
-        (if-let [idx-key (get @idx-keys (.name idx))]
-          (let [new-unique-index-key (create-unique-key (.this idx) new-attribute-values)]
-            (do
-              (alter (-> idx .this :data) alter-sorted-map' idx-key new-unique-index-key coll-tuple)
-              ;;alter reverse lookup
-              (alter idx-keys assoc (.name idx) new-unique-index-key)
-              (comment (print (.name idx) :old old-user-value :new new-user-value :old-a old-attribute-values :new-a new-attribute-values :idx-keys idx-keys))
-              ))
-          (throw (RuntimeException. (format "FATAL RUNTIME EXCEPTION: index %s is inconsistent, failed to remove key %s from value-wrapper %s. Failed to reverse lookup index key." name coll-tuple))))))))
+    (let [idx-keys (-> coll-tuple last get-idx-keys)]
+      (if-let [idx-key (get @idx-keys (.name idx))]
+        (let [new-unique-index-key (create-unique-key (.this idx) new-attribute-values primary-key)]
+          (do
+            (alter (-> idx .this :data) alter-sorted-map' idx-key new-unique-index-key coll-tuple)
+            ;;alter reverse lookup
+            (alter idx-keys assoc (.name idx) new-unique-index-key)
+            (comment (print (.name idx) :old old-user-value :new new-user-value :old-a old-attribute-values :new-a new-attribute-values :idx-keys idx-keys))
+            ))
+        (throw (RuntimeException. (format "FATAL RUNTIME EXCEPTION: index %s is inconsistent, failed to remove key %s from value-wrapper %s. Failed to reverse lookup index key." 
+                                          name idx-keys coll-tuple)))))))
 
 (defn ^clojure.lang.PersistentArrayMap alter-document
   "alters a document given by [user-scope-tuple] within the collection denoted by [coll-name] by applying the function [fn] with the parameters [args] to it. An user-scope-tuple can be obtained using find-first, find and select. returns the new user value"
