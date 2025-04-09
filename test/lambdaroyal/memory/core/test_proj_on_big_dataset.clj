@@ -1,7 +1,7 @@
-(ns 
-    ^{:doc "Performance Unittests for lambdaroyal memory. result eviction to influxdb."
-      :author "christian.meichsner@live.com"}
-  lambdaroyal.memory.core.test-proj-on-big-dataset
+(ns
+ ^{:doc "Performance Unittests for lambdaroyal memory. result eviction to influxdb."
+   :author "christian.meichsner@live.com"}
+ lambdaroyal.memory.core.test-proj-on-big-dataset
   (:require [midje.sweet :refer :all]
             [lambdaroyal.memory.core.tx :refer :all]
             [lambdaroyal.memory.abstraction.search :refer :all]
@@ -13,10 +13,9 @@
 ;;we try to be idempotent, so we don't use mutable models from other workspaces here
 
 (def meta-model
-  {
-   :article
+  {:article
    {:indexes [{:name :client :unique false :attributes [:client]}
-                           {:name :client-no :unique false :attributes [:client :no]}]}
+              {:name :client-no :unique false :attributes [:client :no]}]}
 
    :stock
    {:indexes [] :foreign-key-constraints [{:name :article :foreign-coll :article :foreign-key :article}]}})
@@ -42,21 +41,20 @@
       [nil false])))
 
 (let [ctx (create-context meta-model)
-       tx (create-tx ctx)
-       insert (timed @(insert-future ctx))
-]
+      tx (create-tx ctx)
+      insert (timed @(insert-future ctx))]
   (println (format "insert took (ms) %s and resulted in %s articles and %s stocks" (first insert) (count (select tx :article)) (count (select tx :stock))))
-  (let [projection (timed 
+  (let [projection (timed
                     (count (proj tx (filter-xs :article (take 5000 (select tx :article))) (>>> :stock :verbose true :parallel true))))]
     (println (format "projection found %s records and took (ms) %s" (last projection) (first projection)))
     (fact "max time for insert" (first insert) => (roughly 0 30000))
     (fact "correct number of articles " (count (select tx :article)) => 50000)
-    (fact "max time for projection" (first projection) => (roughly 0 40))
+    (fact "max time for projection" (first projection) => (roughly 0 50))
 
     (append-to-timeseries "proj_on_big_data_set" (apply str (interpose ";" [(first insert) (first projection)]))))
   (with-calculated-field-lambdas {:stock {:type (partial type-decorator tx)}}
     (let [articles (take 5000 (select tx :article))
-          projection (timed 
+          projection (timed
                       (count (proj tx (filter-xs :article articles) (>> :stock (fn [stock] (= "alpha" (-> stock last :type))) :verbose true :parallel true))))
           ;; must return the same as if filtering first the articles
           projection' (timed

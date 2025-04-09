@@ -15,11 +15,12 @@
                  [org.clojure/tools.logging "0.3.1"]
                  [org.clojure/data.json "0.2.6"]
                  [org.slf4j/slf4j-log4j12 "1.7.1"]
-                 [log4j "1.2.17" 
+                 [log4j "1.2.17"
                   :exclusions [javax.mail/mail
-                             javax.jms/jms
-                             com.sun.jdmk/jmxtools
-                             com.sun.jmx/jmxri]]]
+                               javax.jms/jms
+                               com.sun.jdmk/jmxtools
+                               com.sun.jmx/jmxri]]]
+  :test-paths ["test" "test-java"]
   :profiles {:dev {:dependencies [[midje "1.9.4"]]
                    :plugins [[lein-midje "3.2.1"]]}}
   :aot [lambdaroyal.memory.core lambdaroyal.memory.eviction.core lambdaroyal.memory.helper])
