@@ -51,7 +51,7 @@
       (if (or (nil? @old) (< @old gtid))
         (reset! (:gtid coll) gtid)))))
 
-(defn create-tx 
+(defn create-tx
   "creates a transaction upon user-scope function like select, insert, alter-document, delete can be executed. Iff an eviction channel is assigned to a collection then this channel needs to be started otherwise a "
   [ctx & opts]
   (let [opts (apply hash-map opts)
@@ -60,12 +60,12 @@
       (if-not force
         (doseq [coll (vals @ctx)]
           (if-let [eviction-proxy (:evictor coll)]
-            (if-not 
-                (.started? eviction-proxy)
+            (if-not
+             (.started? eviction-proxy)
               (throw (IllegalStateException. (format "eviction channel for collection %s is not yet started." (:coll-name coll))))))))
       {:context ctx})))
 
-(def ^:const constraint-appl-domain 
+(def ^:const constraint-appl-domain
   "donotes database actions suitable for certain types of domains"
   #{:insert :update :delete})
 
@@ -75,7 +75,7 @@
 (defn create-no-applicable-index-exception [coll key]
   (lambdaroyal.memory.core.ConstraintException. (format "Lambdaroyal-Memory No applicable index defined for key %s on collection [%s]" key (:name coll))))
 
-(defn- evictor-watch 
+(defn- evictor-watch
   "returns an stm ref watch that calls the evictor when inserting the stm ref, when updating the respetive value and when deleting the stm ref"
   [coll]
   (fn [watch ref old new]
@@ -84,10 +84,10 @@
             coll-name (-> ref meta :coll-name)
             deleted (-> ref meta :deleted)
             unique-key (-> ref meta :unique-key)]
-        (if started 
+        (if started
           (do
-            (if @evict/verbose' 
-              (println :started started :coll-name coll-name :key unique-key 
+            (if @evict/verbose'
+              (println :started started :coll-name coll-name :key unique-key
                        :fn (cond (and (nil? old) (-> ref meta :deleted)) :insert-and-delete
                                  (-> ref meta :deleted) :delete
                                  (nil? old) :insert
@@ -96,7 +96,7 @@
             (cond
               ;;insert and delete -> nada
               (and (nil? old) (-> ref meta :deleted)) nil
-              (-> ref meta :deleted) 
+              (-> ref meta :deleted)
               (evict/delete evictor coll-name unique-key old)
               (nil? old) (evict/insert evictor coll-name unique-key new)
               :else (evict/update evictor coll-name unique-key old new))))))))
@@ -105,7 +105,7 @@
   "takes a value [user-value] to be stored into the database and returns a respective STM ref with meta-data attached used for reverse index key handling. this map denotes key/value pairs, where key is the name of a index refering the inserted user-value as well as value denotes the key within this very index"
   [coll unique-key user-value]
   (let [x (ref (if (:evictor coll) nil user-value) :meta {:coll-name (:name coll) :unique-key unique-key :idx-keys (ref {})})]
-    (do 
+    (do
       (if-let [eviction-proxy (:evictor coll)]
         (do
           (add-watch x :evictor (evictor-watch coll))
@@ -122,7 +122,7 @@
     (or (and m
              (-> m :unique-key true?)) false)))
 
-(defn create-unique-key 
+(defn create-unique-key
   "creates a unique key [key running] from a user space key using the running bigint index key is a seq of attributes values for all attributes of the  index
   We pass in primary key in order to sort indexed results by primary-key.
   "
@@ -139,12 +139,12 @@
      key
      [key (bigint -1)])))
 
-(defn create-unique-stop-key 
-  "creates a unique key [key running] that can be used for < and <= comparator"  
+(defn create-unique-stop-key
+  "creates a unique key [key running] that can be used for < and <= comparator"
   [key primary-key-is-string]
   (if (is-unique-key? key)
     key
-    [key (if primary-key-is-string (bigint (Long/MAX_VALUE)) (Long/MAX_VALUE) )]))
+    [key (if primary-key-is-string (bigint Long/MAX_VALUE) Long/MAX_VALUE)]))
 
 (defn- stage-next-unique-key
   "returns the next key that would be used for the collection [coll] and the given user key [key]. this can be used to return bounded subsets that match only those 
@@ -159,7 +159,7 @@
 
 (defn contains-key? "returns true iff the collection [coll] contains a tuple whose key is equal to the user key [key]."
   [coll key]
-  (try 
+  (try
     (contains? (-> coll :data deref) key)
     (catch Exception e (throw (ex-info "PERSISTENT BACKEND CORRUPTION. Failure checking data for key" {:data (-> coll :data deref) :key key :coll (:name coll)} e)))))
 
@@ -186,7 +186,7 @@
   (rfind-without-stop [this start-test start-key]
     "takes all values from the collection using this index that fulfil (start-test start-key) until the collection is fully realized. start-test is of >,>=,<,<=. The returning sequence contains of items [[uk i] (ref v)], where uk is the user-key, i is the running index for the collection and (ref v) denotes a STM reference type instance to the value v. yields reverse order"))
 
-(defn- attribute-values 
+(defn- attribute-values
   "returns a vector of all attribute values as per the attributes [attributes] for the value within coll-tuple <- [[k i] (ref value)]"
   [value attributes]
   (vec (map #(get value %) attributes)))
@@ -195,14 +195,14 @@
   (cond
     (= (type start-test) (type >)) (create-unique-stop-key key primary-key-is-string)
     (= (type start-test) (type >=)) (create-unique-key key)
-    (= (type start-test) (type <=)) (create-unique-stop-key key primary-key-is-string) 
+    (= (type start-test) (type <=)) (create-unique-stop-key key primary-key-is-string)
     (= (type start-test) (type <)) (create-unique-key key)
     (= (type start-test) (type =)) (create-unique-stop-key key primary-key-is-string)
     :else (throw (IllegalArgumentException. (str "cannot use comparator " start-test " as argument to create a match-key")))))
 
 (deftype
-    ^{:doc"A index implementation that is defined over a set of comparable attributes. The attributes are given as per the access keys that refer to the attributes to be indexed"}
-    AttributeIndex [this name unique attributes]
+ ^{:doc "A index implementation that is defined over a set of comparable attributes. The attributes are given as per the access keys that refer to the attributes to be indexed"}
+ AttributeIndex [this name unique attributes]
   Index
   (find [this start-test start-key stop-test stop-key]
     (let [this (.this this)
@@ -262,7 +262,7 @@
     (if (= :insert application)
       (let [index-attr-value-seq (attribute-values value attributes)
             unique-key (create-unique-key (.this this) index-attr-value-seq primary-key)]
-        (if unique 
+        (if unique
           (if-let [match (first (.find-without-stop this >= index-attr-value-seq))]
             (if (= index-attr-value-seq (attribute-values (-> match last deref) attributes))
               (throw (create-constraint-exception coll primary-key (format "unique index constraint violated on index %s when precommit value %s" attributes value)))))))))
@@ -278,17 +278,17 @@
         (alter (:data this) assoc unique-key coll-tuple))
       (= :delete application)
       (if coll-tuple
-        (let [this (.this this) 
+        (let [this (.this this)
               idx-keys (-> coll-tuple get-idx-keys)]
           (if-let [idx-key (get @idx-keys name)]
             (alter (:data this) dissoc idx-key)
-            (throw (RuntimeException. (format "FATAL RUNTIME EXCEPTION: index %s is inconsistent, failed to remove key %s from value-wrapper %s. Failed to reverse lookup index key." name coll-tuple)))))))))
+            (throw (RuntimeException. (format "FATAL RUNTIME EXCEPTION: index %s is inconsistent, failed to remove a key from value-wrapper %s. Failed to reverse lookup index key." name coll-tuple)))))))))
 
-(defn create-attribute-index 
+(defn create-attribute-index
   "creates an attribute index for attributes a"
   [name unique a]
   {:pre (sequential? a)}
-  (AttributeIndex. 
+  (AttributeIndex.
    {:running (ref (bigint 0)) :data (ref (sorted-map))}
    name
    unique
@@ -296,7 +296,7 @@
 
 (defn applicable-indexes [coll key]
   (sort-by #(.rating % key)
-           (filter 
+           (filter
             #(.applicable? % key)
             (filter
              #(satisfies? Index %) (map last (-> coll :constraints deref))))))
@@ -332,8 +332,8 @@
 
 
 (deftype
-    ^{:doc "The child (foreign key) part of the referential integrity constraint that checks during insert and alterations of documents refering a referenced/parent document"}
-    ReferrerIntegrityConstraint [this name foreign-coll foreign-key]
+ ^{:doc "The child (foreign key) part of the referential integrity constraint that checks during insert and alterations of documents refering a referenced/parent document"}
+ ReferrerIntegrityConstraint [this name foreign-coll foreign-key]
   Constraint
   (application [this] #{:insert :update})
   (precommit [this ctx coll application key value]
@@ -346,17 +346,17 @@
           (throw (create-constraint-exception coll key (format "referrer integrity constraint violated. no document with key %s within collection %s" foreign-key (.foreign-coll this))))))))
   (postcommit [this ctx coll application coll-tuple] nil))
 
-(defn create-referrer-integrity-constraint 
+(defn create-referrer-integrity-constraint
   [name foreign-coll foreign-key]
-  (ReferrerIntegrityConstraint. 
+  (ReferrerIntegrityConstraint.
    {}
    name
    foreign-coll
    foreign-key))
 
 (deftype
-    ^{:doc "The referenced/parent (primary key) part of the referential integrity constraint that checks during deleting of a documents whether it is referenced by another document"}
-    ReferencedIntegrityConstraint [this name referencing-coll referencing-key]
+ ^{:doc "The referenced/parent (primary key) part of the referential integrity constraint that checks during deleting of a documents whether it is referenced by another document"}
+ ReferencedIntegrityConstraint [this name referencing-coll referencing-key]
   Constraint
   (application [this] #{:delete})
   (precommit [this ctx coll application key value]
@@ -369,9 +369,9 @@
         (throw (create-constraint-exception coll key (format "referenced integrity constraint violated. a document with key %s within collection %s references this document" referencing-coll referencing-key))))))
   (postcommit [this ctx coll application coll-tuple] nil))
 
-(defn create-referenced-integrity-constraint 
+(defn create-referenced-integrity-constraint
   [name referencing-coll referencing-key]
-  (ReferencedIntegrityConstraint. 
+  (ReferencedIntegrityConstraint.
    {}
    name
    referencing-coll
@@ -380,9 +380,9 @@
 (defn create-unique-key-constraint []
   (reify
     Constraint
-    (precommit [this ctx coll application key value] 
+    (precommit [this ctx coll application key value]
       (if (contains-key? coll key)
-        (throw (create-constraint-exception coll key "unique key constraint violated" ))))
+        (throw (create-constraint-exception coll key "unique key constraint violated"))))
     (postcommit [this ctx coll application coll-tuple] nil)
     (application [this] #{:insert})))
 
@@ -397,8 +397,8 @@
   ([^clojure.lang.PersistentVector x]
    (let [[k r] x]
      [k @r]))
-  ( [scoped-calculated-field-lambdas ^clojure.lang.PersistentVector x]
-   (let [[k r] x]     
+  ([scoped-calculated-field-lambdas ^clojure.lang.PersistentVector x]
+   (let [[k r] x]
      (if scoped-calculated-field-lambdas
        (let [user-scope-tuple [k @r]]
          [k (reduce
@@ -414,7 +414,7 @@
        [k @r]))))
 
 (defn get-scoped-user-scope-tuple [collection]
-  (or 
+  (or
    (if (bound? #'*calculated-field-lambdas*)
      (if-let [scoped-calculated-field-lambdas (and (some? *calculated-field-lambdas*) (get *calculated-field-lambdas* collection))]
        (partial user-scope-tuple scoped-calculated-field-lambdas)))
@@ -438,7 +438,7 @@
       (alter data assoc key (last coll-tuple))
       (process-constraints :insert postcommit ctx coll coll-tuple)
       (let [user-scope-tuple' (get-scoped-user-scope-tuple coll-name)]
-       (user-scope-tuple' coll-tuple)))))
+        (user-scope-tuple' coll-tuple)))))
 
 (defn ^clojure.lang.PersistentVector insert "inserts a document [value] by key [key] into collection with name [coll-name] using the transaction [tx]. the transaction can be created from context using (create-tx [context])" [tx ^clojure.lang.Keyword coll-name key ^clojure.lang.PersistentArrayMap value]
   (insert' tx coll-name key (decorate-with-gtid (dissoc value :vlicCalculated))))
@@ -454,8 +454,7 @@
         new-attribute-values (attribute-values new-user-value (.attributes idx))
         primary-key (-> coll-tuple first)
         alter-sorted-map' (fn [sorted-map old-key new-key coll-tuple]
-                            (assoc (dissoc sorted-map old-key) new-key coll-tuple))
-        ]
+                            (assoc (dissoc sorted-map old-key) new-key coll-tuple))]
     (let [idx-keys (-> coll-tuple last get-idx-keys)]
       (if-let [idx-key (get @idx-keys (.name idx))]
         (let [new-unique-index-key (create-unique-key (.this idx) new-attribute-values primary-key)]
@@ -463,9 +462,8 @@
             (alter (-> idx .this :data) alter-sorted-map' idx-key new-unique-index-key coll-tuple)
             ;;alter reverse lookup
             (alter idx-keys assoc (.name idx) new-unique-index-key)
-            (comment (print (.name idx) :old old-user-value :new new-user-value :old-a old-attribute-values :new-a new-attribute-values :idx-keys idx-keys))
-            ))
-        (throw (RuntimeException. (format "FATAL RUNTIME EXCEPTION: index %s is inconsistent, failed to remove key %s from value-wrapper %s. Failed to reverse lookup index key." 
+            (comment (print (.name idx) :old old-user-value :new new-user-value :old-a old-attribute-values :new-a new-attribute-values :idx-keys idx-keys))))
+        (throw (RuntimeException. (format "FATAL RUNTIME EXCEPTION: index %s is inconsistent, failed to remove key %s from value-wrapper %s. Failed to reverse lookup index key."
                                           name idx-keys coll-tuple)))))))
 
 (defn ^clojure.lang.PersistentArrayMap alter-document
@@ -475,27 +473,27 @@
   (let [ctx (-> tx :context deref)
         coll (get ctx coll-name)
         coll-tuple (find-first coll (first user-scope-tuple))
-        _ (if (nil? coll-tuple) 
-            (throw (create-constraint-exception coll key "cannot alter document since document is not present in the collection" )))
+        _ (if (nil? coll-tuple)
+            (throw (create-constraint-exception coll key "cannot alter document since document is not present in the collection")))
         old-user-value (last user-scope-tuple)
         constraints (map last (-> coll :constraints deref))
         idxs (filter
               #(satisfies? Index %) constraints)
-        constraints (filter 
+        constraints (filter
                      #(contains? (.application %) :update)
                      (filter
-                      #(or 
+                      #(or
                         (not (satisfies? Index %))
                         (instance? ReferrerIntegrityConstraint %)) constraints))
 
-        
+
         new-user-value (let [res (apply alter (last coll-tuple) fn args)]
                          (if-let [gtid' (get-gtid)]
                            (alter (last coll-tuple) assoc :vlicGtid gtid')
                            res))]
     (binding [*alter-context* {:old-user-value old-user-value :new-user-value new-user-value}]
-      (do        
-        
+      (do
+
         (decorate-coll-with-gtid coll (:vlicGtid new-user-value))
         ;;check all relevant constraints on the referrer site of the coin
         (doseq [_ constraints]
@@ -508,7 +506,7 @@
           (postcommit _ ctx coll :update coll-tuple))
         new-user-value))))
 
-(defn delete 
+(defn delete
   "deletes a document by key [key] from collection with name [coll-name] using the transaction [tx]. the transaction can be created from context using (create-tx [context]. returns number of removed items."
   [tx ^clojure.lang.Keyword coll-name key]
   {:pre [(contains? (-> tx :context deref) coll-name)]}
@@ -526,7 +524,7 @@
         (ref-set x @x)
         1) 0)))
 
-(defn coll-empty? 
+(defn coll-empty?
   "returns true iff the collection with name [coll-name] is empty"
   [tx coll-name]
   {:pre [(contains? (-> tx :context deref) coll-name)]}
@@ -542,7 +540,7 @@
   "returns the first key/value pair of the collection [coll-name] that matches the key [key] or nil"
   [tx coll-name key]
   {:pre [(contains? (-> tx :context deref) coll-name)]}
-  (if-let [f (if (some? key) 
+  (if-let [f (if (some? key)
                (find-first (get (-> tx :context deref) coll-name) key))]
     (let [user-scope-tuple' (get-scoped-user-scope-tuple coll-name)]
       (user-scope-tuple' f))))
@@ -554,8 +552,17 @@
   ([tx coll-name] ;; full table scan
    {:pre [(contains? (-> tx :context deref) coll-name)]}
    (let [all (-> (get  (-> tx :context deref) coll-name) :data deref)
-         user-scope-tuple' (get-scoped-user-scope-tuple coll-name)]
-     (map user-scope-tuple' all)))
+         user-scope-tuple' (get-scoped-user-scope-tuple coll-name)
+         result-count (count all)]
+     (if (> result-count 100)  ;; Only use transients for larger collections
+       ;; Use transients for larger collections
+       (persistent!
+        (reduce
+         (fn [acc item] (conj! acc (user-scope-tuple' item)))
+         (transient [])
+         all))
+       ;; Use regular map for smaller collections
+       (map user-scope-tuple' all))))
   ([tx coll-name start-test start-key] ;; forward index scan
    {:pre [(contains? (-> tx :context deref) coll-name)]}
    (let [sub (subseq (-> (get  (-> tx :context deref) coll-name) :data deref) start-test start-key)
@@ -588,8 +595,16 @@
   ([tx coll-name]
    {:pre [(contains? (-> tx :context deref) coll-name)]}
    (let [all (-> (get  (-> tx :context deref) coll-name) :data deref)
-         user-scope-tuple' (get-scoped-user-scope-tuple coll-name)]
-     (map user-scope-tuple' (rseq all))))
+         user-scope-tuple' (get-scoped-user-scope-tuple coll-name)
+         rseq-all (rseq all)
+         result-count (count all)]
+     (if (> result-count 100)
+       (persistent!
+        (reduce
+         (fn [acc item] (conj! acc (user-scope-tuple' item)))
+         (transient [])
+         rseq-all))
+       (map user-scope-tuple' rseq-all))))
 
   ;; forward primary index scan
   ([tx coll-name start-test start-key]
@@ -621,7 +636,7 @@
   [tx coll-name user-scope-tuple & opts]
   {:pre [(contains? (-> tx :context deref) coll-name)]}
   (let [opts (apply hash-map opts)]
-    (loop [todo #{[coll-name user-scope-tuple]} 
+    (loop [todo #{[coll-name user-scope-tuple]}
            done (or (:cache opts) {})
            depth 0]
       (if (empty? todo)
@@ -680,7 +695,7 @@
                            (if @tree-verbose (println "[replace-in-tree] stop at" done-key))
                            acc))))
                    {} rics)]
-    [(first user-scope-tuple) (assoc 
+    [(first user-scope-tuple) (assoc
                                (merge (last user-scope-tuple) merge-map)
                                :coll coll-name)]))
 

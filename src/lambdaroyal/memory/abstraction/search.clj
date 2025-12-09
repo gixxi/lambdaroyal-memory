@@ -30,7 +30,7 @@
     @(:stop-feeding-aggregator break-condition-state)
     false))
 
-(defn abstract-search 
+(defn abstract-search
   "higher order function - takes a function [fn] that returns a lazy sequence [s] of user-scope tuples from lambdaroyal memory. This function returns a function that returns a channel where the result of the function fn, s is pushed to."
   [λ]
   (fn [args]
@@ -60,27 +60,27 @@
         limit (or (:minority-report opts) (count fns))
         ;;fire of all searches in parallel - don't run them if we got too much so far
         fn-count (reduce
-           (fn [acc λ]
-             (if (not (check-break-condition-reached (:break-condition-state opts)))
-               (do
-                 (go (>! c (<! (λ query))))
-                 (inc acc))
-               acc))
-           0 fns)
+                  (fn [acc λ]
+                    (if (not (check-break-condition-reached (:break-condition-state opts)))
+                      (do
+                        (go (>! c (<! (λ query))))
+                        (inc acc))
+                      acc))
+                  0 fns)
         ;;jerk the jokers
         limit (min limit fn-count)]
-    
+
     ;;fire of the aggregator (controller) go block
     (go
       (loop [i 0 stop false]
-        (if 
+        (if
             ;;recur until we reach timeout or all searches returned or we got enough juice
-            (or 
-             (>= i limit)
-             stop
-             (is-stop-feeding-aggregator (:break-condition-state opts)))
+         (or
+          (>= i limit)
+          stop
+          (is-stop-feeding-aggregator (:break-condition-state opts)))
           (if (:finish-callback opts) ((:finish-callback opts)))
-          (let [next (if t 
+          (let [next (if t
                        ;;take result or bump timeout
                        (first (alts! [c t]))
                        ;;else : wait indef for result
@@ -91,7 +91,7 @@
             ;;loop - wait for the next
             (recur (inc i) (nil? next))))))))
 
-(defn concat-aggregator 
+(defn concat-aggregator
   "assumes ref to be a vector reference"
   [ref data]
   (dosync
@@ -103,15 +103,15 @@
   (dosync
    (apply commute ref conj data)))
 
-(defn gen-sorted-set 
+(defn gen-sorted-set
   "generates a STM ref on a sorted set that can be used in conjunction with set-aggregator"
   []
   (ref (sorted-set-by
         (fn [x x']
           (let [coll (-> x last :coll)
                 coll' (-> x' last :coll)]
-            (if 
-                (= coll coll')
+            (if
+             (= coll coll')
               (compare (first x) (first x'))
               (compare coll coll')))))))
 
@@ -122,7 +122,7 @@
     (dosync
      (commute ref assoc (list (-> data second :coll) (-> data first)) data))))
 
-(defn combined-search' 
+(defn combined-search'
   "derives from lambdaroyal.memory.abstraction.search/combined-search - 
   higher order function - takes a aggregator function [agr], a sequence of concrete functions (abstract-search), a query parameter [query] (can be a sequence) and optional parameters [opts] and returns go block. all the search functions [fns] are called with parameter [query] executed in parallel and feed their result (a sequence of user-scope tuples from lambdaroyal memory) to the aggregator function [agr]. By default the resulting go routine waits for all fn in [fns] for delivering a result.
 
@@ -141,7 +141,7 @@
   The following options are accepted\\n 
   :timeout value in ms after which the aggregator channel is closed, no more search results are considered.\\n
   :minority-report number of search function fn in [fns] that need to result in order to close the aggregator channel is closed and no more search results are consfidered."
-  [fns query finish-callback & opts] 
+  [fns query finish-callback & opts]
   (let [acc (ref #{})
         agr (partial set-aggregator acc)]
     (apply combined-search' agr fns query :finish-callback #(finish-callback @acc) opts)))
@@ -163,10 +163,10 @@
     (let [level (first levels)
           next (rest levels)
           xs' (group-by #(level %) xs)
-          xs'' (pmap 
+          xs'' (pmap
                 (fn [[k v]]
                   ;;consider partial hierarchies, where a level is not present
-                  (if k 
+                  (if k
                     [[k (count v)]
                      (apply hierarchie v handler next)]
                     ;;else
@@ -175,10 +175,10 @@
           ;;special handling for partial hierarchies, if their is just one result in the bucket we
           ;;use this rather than the bucket 
           xs'' (if (and (= (count xs'') 1) next)
-                 (first xs'') xs'') ]
+                 (first xs'') xs'')]
       xs'')
     ;;else
-    (if handler (handler xs) 
+    (if handler (handler xs)
         ;;else
         xs)))
 
@@ -188,7 +188,7 @@
               (let [level (first levels)
                     next (rest levels)
                     xs' (group-by #(level %) xs)
-                    xs'' (map 
+                    xs'' (map
                           (fn [[k v]]
                             ;;atomic denotes whether a seq with just one element was present -> only the single element is returned
                             (let [res-from-recursion (apply hierarchie-backtracking-int false v handler λbacktracking next)]
@@ -213,7 +213,7 @@
               ;;furthermore this data might be provided back without using grouping it due to
               ;;partial hierarchies, types would be nice
               (deliver (with-meta (promise) {:leaf true})
-                       (if handler (handler xs) 
+                       (if handler (handler xs)
                            ;;else
                            xs)))]
     (if (and initial (meta res) (-> res meta :leaf) (instance? clojure.lang.IPending res))
@@ -226,7 +226,7 @@
   [xs handler λbacktracking & levels]
   (apply hierarchie-backtracking-int true xs handler λbacktracking levels))
 
-(defn hierarchie-ext 
+(defn hierarchie-ext
   "builds up a hierarchie where a node is given by it's key (level discriminator), a map containing extra info that are characteristic for (an arbitrary) document that fits into this hierarchie as well as all the matching documents classified by the values of the next category (if any) or the matching documents as subnodes.
   [level] is variable arity set of taking a document into account and providing back a tuple [category ext], where category is a keyword or function providing back the category of a document whereas ext is a keyword or function providing back the the characteristics of a document with respect to the category. [handler] is a function applied to the leafs of the hierarchie. Using identity as function will result the documents as leafs."
   [xs handler & levels]
@@ -235,7 +235,7 @@
           next (rest levels)]
       (let [[level-category level-ext] level
             xs' (group-by #(level-category %) xs)
-            xs'' (pmap 
+            xs'' (pmap
                   (fn [[k v]]
                     ;;consider partial hierarchies, where a level is not present
                     (if k
@@ -245,7 +245,7 @@
                   xs')]
         xs''))
     ;;else
-    (if handler (handler xs) 
+    (if handler (handler xs)
         ;;else
         xs)))
 
@@ -259,9 +259,9 @@
          target-coll (get ctx target)
          constraints (map last (-> source-coll :constraints deref))
          rics (filter
-               #(instance? ReferrerIntegrityConstraint %) constraints)] 
+               #(instance? ReferrerIntegrityConstraint %) constraints)]
      (some #(if (= (.foreign-coll %) target) %) rics)))
-([tx source target foreign-key]
+  ([tx source target foreign-key]
    {:pre [(contains? (-> tx :context deref) source)
           (contains? (-> tx :context deref) target)]}
    (let [ctx (-> tx :context deref)
@@ -269,8 +269,8 @@
          target-coll (get ctx target)
          constraints (map last (-> source-coll :constraints deref))
          rics (filter
-               #(instance? ReferrerIntegrityConstraint %) constraints)] 
-     (some #(if (and 
+               #(instance? ReferrerIntegrityConstraint %) constraints)]
+     (some #(if (and
                  (= (.foreign-coll %) target)
                  (= (.foreign-key %) foreign-key)) %) rics))))
 
@@ -280,11 +280,11 @@
   :foreign-key is given within the opts then we explicitly seach for a ric with a certain foreign-key. 
   :abs-full-scan iff the number of keys is greater than the abs-full-scan, then the source collection is fully scanned for matching tuples rather and queries by index lookups"
   ([tx source target keys & opts]
-   (with-meta 
+   (with-meta
      (let [opts (if opts (apply hash-map opts))
            {foreign-key :foreign-key verbose :verbose parallel :parallel, ratio-full-scan :ratio-full-scan abs-full-scan :abs-full-scan reverse' :reverse, :or {parallel true ratio-full-scan 0.2 verbose false abs-full-scan 512 reverse' false}} opts
-           ric (or (if foreign-key 
-                     (ric tx source target foreign-key) (ric tx source target)) 
+           ric (or (if foreign-key
+                     (ric tx source target foreign-key) (ric tx source target))
                    (throw (IllegalStateException. (str "Failed to build data projection - no ReferrerIntegrityConstraint from collection " source " to collection " target " defined."))))
            target-count (-> tx :context deref target :data deref count)
            keys-to-collsize-ratio (if (= target-count 0) 0 (/ (count keys) target-count))
@@ -299,19 +299,31 @@
          []
          ;;else
          (if full-scan
-           ;;in full-scan mode we just build a set of the keys provided and filter
-           (let [keys (into #{} keys)
-                 xs ((if-not reverse' tx/select tx/rselect) tx source)]
-             (filter #(contains? keys (get (last %) (.foreign-key ric))) xs))
+           ;; in full-scan mode we just build a set of the keys provided and filter
+           (let [keys-set (into #{} keys)
+                 xs ((if-not reverse' tx/select tx/rselect) tx source)
+                 result-count (count xs)]
+             (if (> result-count 1000)
+               ;; Use transients for larger collections
+               (persistent!
+                (reduce
+                 (fn [acc item]
+                   (if (contains? keys-set (get (last item) (.foreign-key ric)))
+                     (conj! acc item)
+                     acc))
+                 (transient [])
+                 xs))
+               ;; Use regular filter for smaller collections
+               (filter #(contains? keys-set (get (last %) (.foreign-key ric))) xs)))
            (let [user-scope-tuple' (tx/get-scoped-user-scope-tuple source)
-                 find-fn (fn [key]                           
-                           (take-while  
+                 find-fn (fn [key]
+                           (take-while
                             #(= key (get (last %) (.foreign-key ric)))
                             (map user-scope-tuple'
-                                 ((if-not reverse' tx/select-from-coll tx/rselect-from-coll) 
-                                  source-coll 
+                                 ((if-not reverse' tx/select-from-coll tx/rselect-from-coll)
+                                  source-coll
                                   [(.foreign-key ric)]
-                                  (if reverse' <= >=) 
+                                  (if reverse' <= >=)
                                   [key]))))
                  ;;one seq with the results for each key
                  xs ((if parallel pmap map) find-fn keys)
@@ -327,18 +339,18 @@
 (defn by-referencees
   "returns all user scope tuples from collection [target] that are referenced to collection [target] by some ReferencedIntegrityConstraint and have primary key as per the foreign keys within xs. the sequence is supposed to be redundancy free (set)."
   ([tx source target xs & opts]
-   (with-meta 
+   (with-meta
      (let [opts (if opts (apply hash-map opts))
            {foreign-key :foreign-key verbose :verbose parallel :parallel reverse' :reverse, :or {parallel true verbose false reverse' false}} opts
-           ric (or (if foreign-key 
-                     (ric tx source target foreign-key) (ric tx source target)) 
+           ric (or (if foreign-key
+                     (ric tx source target foreign-key) (ric tx source target))
                    (throw (IllegalStateException. (str "[by-referencees] Failed to build data projection - no ReferrerIntegrityConstraint from collection " source " to collection " target " defined."))))
            _ (if verbose (println (format "[by-referencees] to collection %s -> %s  -> %s " source (.foreign-key ric) target)))
-           res (distinct (filter some? ((if parallel pmap map) 
-                                (fn [x]
-                                  (let [fk (get (last x) (.foreign-key ric))]
-                                    (tx/select-first tx target fk)))
-                                xs)))]
+           res (distinct (filter some? ((if parallel pmap map)
+                                        (fn [x]
+                                          (let [fk (get (last x) (.foreign-key ric))]
+                                            (tx/select-first tx target fk)))
+                                        xs)))]
        (if reverse' (reverse (sort-by first res)) res))
      {:coll-name target})))
 
@@ -356,7 +368,7 @@
   (fn [tx xs]
     {:pre [(-> xs meta :coll-name)]}
     (with-meta (filter filter-fn
-                       (apply by-referencees 
+                       (apply by-referencees
                               tx
                               (-> xs meta :coll-name)
                               target
@@ -379,7 +391,7 @@
   [tx coll-name]
   (let [meta {:coll-name coll-name}]
     (with-meta (fn []
-                 (with-meta 
+                 (with-meta
                    (tx/select tx coll-name) meta)) meta)))
 
 (defn filter-xs
@@ -387,7 +399,7 @@
   [coll-name xs]
   (let [meta {:coll-name coll-name}]
     (with-meta (fn []
-                 (with-meta 
+                 (with-meta
                    xs meta)) meta)))
 
 (defn filter-key
@@ -396,7 +408,7 @@
    (let [meta {:coll-name coll-name}]
      (with-meta (fn [& opts]
                   (with-meta
-                    (take-while  
+                    (take-while
                      #(= key (first %))
                      (tx/select tx coll-name >= key))
                     meta)) meta)))
@@ -420,19 +432,19 @@
        meta)))
   ([tx coll-name attr start-test start-key stop-test stop-key]
    (let [meta {:coll-name coll-name}]
-     (with-meta 
+     (with-meta
        (fn [& opts]
          (with-meta (tx/select tx coll-name attr start-test start-key stop-test stop-key) meta))
        meta))))
 
-(defn proj 
+(defn proj
   "data projection - takes a higher order functions λ into account that that returns a function whose application results in a seq of user scope tupels AND metadata with :coll-name denoting the collection the tupels belong to. Furthermore this function takes a variable number of path functions [path-fns] into account. The first one is supposed to take the outcome of application of λ into account, all others are supposes to take the outcome of the respective predessor path-fn into account. All are supposed to produce a seq of user scope tupels into account that is consumable be the respective successor path-fn AND metadata denoting the collection name by key :coll-name."
   [tx λ & path-fns]
   ;;this fuss means we copy the meta data from the function to the result of its application
   (let [xs (with-meta (λ) (meta λ))]
-    (if-not path-fns 
+    (if-not path-fns
       xs
       (loop [xs xs path-fns path-fns]
-        (if 
-            (empty? path-fns) xs
-            (recur ((first path-fns) tx xs) (rest path-fns)))))))
+        (if
+         (empty? path-fns) xs
+         (recur ((first path-fns) tx xs) (rest path-fns)))))))

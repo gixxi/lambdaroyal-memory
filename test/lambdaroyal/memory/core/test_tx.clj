@@ -4,7 +4,8 @@
             [lambdaroyal.memory.core.context :refer :all]
             [lambdaroyal.memory.core.test-context :refer [meta-model meta-model-with-indexes meta-model-with-ric meta-model-with-ric']]
             [lambdaroyal.memory.helper :refer :all])
-  (:import [lambdaroyal.memory.core ConstraintException]))
+  (:import [lambdaroyal.memory.core ConstraintException])
+  (:gen-class))
 
 (facts "check core multimethods find-first/contains-key?"
        (let [ctx (create-context meta-model)
@@ -97,7 +98,7 @@
           (insert tx :order :b {:type :pro}))
          (fact "after insert the collection is not empty"
                (coll-empty? tx :order) => falsey))
-  
+
   (fact "removing successfully 1 item must return 1" (dosync (delete tx :order :a)) => 1)
   (fact "removing successfully 1 item must return 1" (dosync (delete tx :order :b)) => 1)
   (fact "removing twice the same item must not work" (dosync (delete tx :order :b)) => 0)
@@ -128,62 +129,61 @@
                 (count (select tx :order > 0)) => 800))))
 
 (facts "check insert into collection with indexes"
-  (let [ctx (create-context meta-model-with-indexes)
-        tx (create-tx ctx)
-        _ (dosync
-           (doseq [i (range 1000)]
-             (insert tx :order i {:type :test :keyword i :client (mod i 2) :number i})))
-        idx-client (-> ctx deref :order :constraints deref :client)
-        idx-client-no (-> ctx deref :order :constraints deref :client-no)
-        timed-find (timed
-                    (.find idx-client >= [0] < [1])) 
-        timed-auto-find (timed
-                         (select tx :order [:client] >= [0] < [1]))
-        timed-select (timed
-                      (doall
-                       (filter #(= (-> % last :client) 0) (select tx :order >= 0))))
-        _ (println "count for timed-find" (-> timed-find last count))
-        _ (println "count for timed-auto-find" (-> timed-auto-find last count))
-        _ (println "count for select" (-> timed-select last count))
-        _ (println "time for find 500 of 1000 using index" (first timed-find))
-        _ (println "time for filter 500 of 1000" (first timed-select))
-        _ (println "time for auto-select 500 of 1000" (first timed-auto-find))]
-    (fact "index :client must be present" idx-client => truthy)
-    (fact "index :client-no must be present" idx-client-no => truthy)
-    (fact "index :client is applicable on search attributes '(:client)"
-      (.applicable? idx-client '(:client)) => truthy)
-    (fact "index :client is applicable on search attributes [:client]"
-      (.applicable? idx-client [:client]) => truthy)
-    (fact "index :client is applicable on search attributes [:foo]"
-      (.applicable? idx-client [:foo]) => falsey)
-    (fact "index :client-no is applicable on search attributes [:client]"
-      (.applicable? idx-client-no [:client]) => truthy)
-    (fact "index :client-no is applicable on search attributes [:client :no]"
-      (.applicable? idx-client-no [:client :no]) => truthy)
-    (fact "index :client-no is applicable on search attributes [:client]"
-      (.applicable? idx-client-no [:no :client]) => falsey)
-    (fact "index :client reveals 500 entries"
-      (count (.find idx-client >= [0] < [1])) => 500)
-    (fact (format "finding using index must outperform non-index filter by factor 5")
-          (* 5 (first timed-find)) => (roughly (first timed-select) 100))
-    (fact "finding using auto-selected index must outperform non-index filter by factor 5"
-          (* 5 (first timed-auto-find)) => (roughly (first timed-select) 100))
-    (fact "find and select must reveal the same items"
-      (-> timed-find last count) =>
-      (-> timed-select last count))
-    (fact "find and auto-find must reveal the same items"
-      (-> timed-find last count) =>
-      (-> timed-auto-find last count))))
+       (let [ctx (create-context meta-model-with-indexes)
+             tx (create-tx ctx)
+             _ (dosync
+                (doseq [i (range 1000)]
+                  (insert tx :order i {:type :test :keyword i :client (mod i 2) :number i})))
+             idx-client (-> ctx deref :order :constraints deref :client)
+             idx-client-no (-> ctx deref :order :constraints deref :client-no)
+             timed-find (timed
+                         (.find idx-client >= [0] < [1]))
+             timed-auto-find (timed
+                              (select tx :order [:client] >= [0] < [1]))
+             timed-select (timed
+                           (doall
+                            (filter #(= (-> % last :client) 0) (select tx :order >= 0))))
+             _ (println "count for timed-find" (-> timed-find last count))
+             _ (println "count for timed-auto-find" (-> timed-auto-find last count))
+             _ (println "count for select" (-> timed-select last count))
+             _ (println "time for find 500 of 1000 using index" (first timed-find))
+             _ (println "time for filter 500 of 1000" (first timed-select))
+             _ (println "time for auto-select 500 of 1000" (first timed-auto-find))]
+         (fact "index :client must be present" idx-client => truthy)
+         (fact "index :client-no must be present" idx-client-no => truthy)
+         (fact "index :client is applicable on search attributes '(:client)"
+               (.applicable? idx-client '(:client)) => truthy)
+         (fact "index :client is applicable on search attributes [:client]"
+               (.applicable? idx-client [:client]) => truthy)
+         (fact "index :client is applicable on search attributes [:foo]"
+               (.applicable? idx-client [:foo]) => falsey)
+         (fact "index :client-no is applicable on search attributes [:client]"
+               (.applicable? idx-client-no [:client]) => truthy)
+         (fact "index :client-no is applicable on search attributes [:client :no]"
+               (.applicable? idx-client-no [:client :no]) => truthy)
+         (fact "index :client-no is applicable on search attributes [:client]"
+               (.applicable? idx-client-no [:no :client]) => falsey)
+         (fact "index :client reveals 500 entries"
+               (count (.find idx-client >= [0] < [1])) => 500)
+         (fact (format "finding using index must outperform non-index filter by factor 5")
+               (* 5 (first timed-find)) => (roughly (first timed-select) 100))
+         (fact "finding using auto-selected index must outperform non-index filter by factor 5"
+               (* 5 (first timed-auto-find)) => (roughly (first timed-select) 100))
+         (fact "find and select must reveal the same items"
+               (-> timed-find last count) =>
+               (-> timed-select last count))
+         (fact "find and auto-find must reveal the same items"
+               (-> timed-find last count) =>
+               (-> timed-auto-find last count))))
 
 (facts "inserting and removing elements from an index-backed collection must alter back the index as well"
        (let [ctx (create-context meta-model-with-indexes)
              tx (create-tx ctx)
              _ (dosync
                 (insert tx :order 1 {:type :test :keyword "gaga" :client 1 :no 2})
-                (insert tx :order 2 {:type :test :keyword "gaga" :client 2 :no 2})
-                )
+                (insert tx :order 2 {:type :test :keyword "gaga" :client 2 :no 2}))
              idx-client (-> ctx deref :order :constraints deref :client)
-             idx-client-no (-> ctx deref :order :constraints deref :client-no)] 
+             idx-client-no (-> ctx deref :order :constraints deref :client-no)]
          (fact "can find item at all using index 1" (first (select tx :order [:client] >= [1] < [2])) => truthy)
          (fact "can find item at all using index 2" (first (select tx :order [:client :number] >= [1 2] < [1 3])) => truthy)
          (dosync
@@ -200,7 +200,7 @@
                 (insert tx :order 2 {:type :test :client "client1" :bool true :number 5})
                 (insert tx :order 3 {:type :test :client "client0" :bool true :number 1})
                 (insert tx :order 4 {:type :test :client "client4"})
-                (insert tx :order 5 {:type :test :bool false}))] 
+                (insert tx :order 5 {:type :test :bool false}))]
          ;; strings
          (do
            (fact "start cond >= nil must reveal all" (into #{} (map #(first %) (select tx :order [:client] >= [nil]))) => #{0 1 2 3 4 5})
@@ -233,8 +233,7 @@
              tx (create-tx ctx)
              _ (dosync
                 (insert tx :order 1 {:type :test :keyword "gaga" :client 1 :no 2})
-                (insert tx :order 2 {:type :test :keyword "gaga" :client 2 :no 2})
-                )
+                (insert tx :order 2 {:type :test :keyword "gaga" :client 2 :no 2}))
              idx-client (-> ctx deref :order :constraints deref :client)
              idx-client-no (-> ctx deref :order :constraints deref :client-no)
              order-1 (select-first tx :order 1)]
@@ -285,7 +284,7 @@
          (fact "must not delete type with referencing part orders"
                (dosync
                 (delete tx :type 1)) => (throws ConstraintException #".+?integrity constraint violated.*"))
-         (dosync 
+         (dosync
           (delete tx :part-order 1)
           (delete tx :part-order 2))
          (fact "delete order without referencing part orders"
@@ -307,22 +306,22 @@
                 (insert tx :order 3 {:no 2})
                 (insert tx :order 4 {:no 3})) => truthy)))
 
-(fact "building the tree referencees for a user-scope-tuple" 
+(fact "building the tree referencees for a user-scope-tuple"
       (time (let [rics (map #(-> % last .name) (referential-integrity-constraint-factory meta-model-with-ric))
                   ctx (create-context meta-model-with-ric)
                   tx (create-tx ctx)
                   _ (dosync (insert tx :type 1 {})
-                        (insert tx :order 1 {:name :foo})
-                        (insert tx :part-order 1 {:type 1 :order 1 :gaga "baba"}))
+                            (insert tx :order 1 {:name :foo})
+                            (insert tx :part-order 1 {:type 1 :order 1 :gaga "baba"}))
                   part-order (select-first tx :part-order 1)
                   order (select-first tx :order 1)
                   type (select-first tx :type 1)]
-              (tree-referencees tx :part-order part-order) 
-              => {[:order 1] 
+              (tree-referencees tx :part-order part-order)
+              => {[:order 1]
                   [:order [1 {:name :foo :vlicGtid (-> order last :vlicGtid)}]]
                   [:type 1] [:type [1 {:vlicGtid (-> type last :vlicGtid)}]]})))
 
-(fact "building the tree for a user-scope-tuple (old signature)" 
+(fact "building the tree for a user-scope-tuple (old signature)"
       (time (let [rics (map #(-> % last .name) (referential-integrity-constraint-factory meta-model-with-ric))
                   ctx (create-context meta-model-with-ric)
                   tx (create-tx ctx)]
@@ -334,12 +333,12 @@
                 (tree tx :line-item (select-first tx :line-item 1) {})
                 => [1 {:vlicGtid (-> (select-first tx :line-item 1) last :vlicGtid)
                        :coll :line-item, :no 1, :part-order [1 {:vlicGtid (-> (select-first tx :part-order 1) last :vlicGtid)
-                                                                :coll :part-order, :gaga "baba", 
+                                                                :coll :part-order, :gaga "baba",
                                                                 :order [1 {:vlicGtid (-> (select-first tx :order 1) last :vlicGtid)
                                                                            :coll :order, :name :foo}], :type [1 {:vlicGtid (-> (select-first tx :type 1) last :vlicGtid)
                                                                                                                  :coll :type}]}]}]))))
 
-(fact "building the tree for a user-scope-tuple and assoc referencees by attr-name" 
+(fact "building the tree for a user-scope-tuple and assoc referencees by attr-name"
       (time (let [rics (map #(-> % last .name) (referential-integrity-constraint-factory meta-model-with-ric'))
                   ctx (create-context meta-model-with-ric')
                   tx (create-tx ctx)
@@ -349,7 +348,7 @@
                   part-order2 (dosync (insert tx :part-order 2 {:type 1 :order 1 :gaga "bobo"}))
                   line-item (dosync (insert tx :line-item 1 {:no 1 :part-order-original 1 :part-order-old 2}))
                   tree (tree tx :line-item (select-first tx :line-item 1) :use-attr-name true)]
-              
+
               tree => [1
                        {:coll :line-item
                         :vlicGtid (-> line-item last :vlicGtid)
@@ -364,8 +363,7 @@
                                               {:coll :part-order
                                                :vlicGtid (-> part-order1 last :vlicGtid)
                                                :gaga "baba"
-                                               :order [1 {:coll :order :name :foo :vlicGtid (-> order last :vlicGtid)
-                                                          }]
+                                               :order [1 {:coll :order :name :foo :vlicGtid (-> order last :vlicGtid)}]
                                                :type [1 {:coll :type :vlicGtid (-> type last :vlicGtid)}]}]}])))
 
 (facts "facts about adding constraints (RICs) at runtime"
@@ -384,20 +382,20 @@
          (add-ric ctx {:name :part-order->order :coll :part-order :foreign-coll :order :foreign-key :order})
          (fact "adding as per constraint must be ok"
                (dosync (insert tx :part-order 20 {:order 2})))
-         (fact 
+         (fact
           "frauding the dynamically added constraint must fail"
           (dosync
            (insert tx :part-order 21 {:order 3})) => (throws ConstraintException))
          (fact "selecting by index after adding the ric that implies the index must succed"
                (distinct
-                (map 
-                 #(-> % last :order) 
+                (map
+                 #(-> % last :order)
                  (select tx :part-order [:order] >= [2]))) => [2])))
 
 (facts "check for unique gtid"
        (let [x (atom nil)
              y (atom nil)]
-         (gtid-dosync 
+         (gtid-dosync
           (reset! x @gtid))
          (gtid-dosync
           (reset! y @gtid))
@@ -412,26 +410,26 @@
          (fact "must be the same for nested tx" @x => @y)))
 
 (facts "facts about adding constraints (RICs) at runtime"
-  (let [ctx (create-context meta-model)
-        tx (create-tx ctx)]
-    (dosync
-     (let [x (insert tx :order 1 {:name :foo})
-           y (insert tx :order 2 {:name :foo2})]
-       (fact "*gtid* must not be bound" (bound? #'*gtid*) => falsey)
-       (fact "if no derived dosync is used then the gtid_ must be set" (contains? (last x) :vlicGtid) => truthy)
-       (fact "gtid of first inserted object must be below gtid of most recently inserted object" (< (-> x last :vlicGtid) (-> y last :vlicGtid)) => true)
-       (fact "collection must contain gtid that matches the most recently used gtid" (-> ctx deref :order :gtid deref) => (-> y last :vlicGtid))))
+       (let [ctx (create-context meta-model)
+             tx (create-tx ctx)]
+         (dosync
+          (let [x (insert tx :order 1 {:name :foo})
+                y (insert tx :order 2 {:name :foo2})]
+            (fact "*gtid* must not be bound" (bound? #'*gtid*) => falsey)
+            (fact "if no derived dosync is used then the gtid_ must be set" (contains? (last x) :vlicGtid) => truthy)
+            (fact "gtid of first inserted object must be below gtid of most recently inserted object" (< (-> x last :vlicGtid) (-> y last :vlicGtid)) => true)
+            (fact "collection must contain gtid that matches the most recently used gtid" (-> ctx deref :order :gtid deref) => (-> y last :vlicGtid))))
 
-    (gtid-dosync
-     (let [x (insert tx :order 3 {:name :foo})
-           y (insert tx :order 4 {:name :foo2})
-           gtid' (-> x last :vlicGtid)]
-       (fact "*gtid* must be same with object's gtid" gtid' => *gtid*)
-       (fact "*gtid* must not be bound" (bound? #'*gtid*) => true?)
-       (fact "collection does contain mru gtid" (-> ctx deref :order :gtid deref) => gtid')
-       (let [coll (get @ctx :order)]
-         (fact "gtid of collection must match most recently used gtid of object"
-           (-> coll :gtid deref) => (-> y last :vlicGtid)))))))
+         (gtid-dosync
+          (let [x (insert tx :order 3 {:name :foo})
+                y (insert tx :order 4 {:name :foo2})
+                gtid' (-> x last :vlicGtid)]
+            (fact "*gtid* must be same with object's gtid" gtid' => *gtid*)
+            (fact "*gtid* must not be bound" (bound? #'*gtid*) => true?)
+            (fact "collection does contain mru gtid" (-> ctx deref :order :gtid deref) => gtid')
+            (let [coll (get @ctx :order)]
+              (fact "gtid of collection must match most recently used gtid of object"
+                    (-> coll :gtid deref) => (-> y last :vlicGtid)))))))
 
 
 
