@@ -118,28 +118,28 @@
         (commute (:constraints source-coll) dissoc (.name constraint))))))
 
 (defn referential-integrity-constraint-factory [meta-model]
-  (reduce
-   (fn [acc [coll name unique constraint]]
-     (conj 
-      acc 
-      [coll constraint]
-      ;;add additional index that backs looking up referrers during deleting parent documents 
-      [coll (create-attribute-index (gensym) unique [(.foreign-key constraint)])]
-      ;;add reverse constraint - RIC on the parent/referenced collection
-      [(.foreign-coll constraint) (create-referenced-integrity-constraint (referenced-constraint-name coll (.foreign-key constraint) name) coll (.foreign-key constraint))]))
-   []
-   (map
-    (fn [constraint]
-      (let [{:keys [name coll foreign-coll foreign-key unique]} constraint
-            name (or name (gensym))
-            unique (or unique false)]
-        [coll
-         name
-         unique
-         (create-referrer-integrity-constraint (referrer-constraint-name foreign-coll foreign-key name) foreign-coll foreign-key)]))
-    (reduce (fn [acc [k v]]
-              (concat acc (map #(assoc % :coll k) v))) []
-              (zipmap (keys meta-model) (map :foreign-key-constraints (vals meta-model)))))))
+  (persistent!
+   (reduce
+    (fn [acc [coll name unique constraint]]
+      (-> acc 
+          (conj! [coll constraint])
+          ;;add additional index that backs looking up referrers during deleting parent documents 
+          (conj! [coll (create-attribute-index (gensym) unique [(.foreign-key constraint)])])
+          ;;add reverse constraint - RIC on the parent/referenced collection
+          (conj! [(.foreign-coll constraint) (create-referenced-integrity-constraint (referenced-constraint-name coll (.foreign-key constraint) name) coll (.foreign-key constraint))])))
+    (transient [])
+    (map
+     (fn [constraint]
+       (let [{:keys [name coll foreign-coll foreign-key unique]} constraint
+             name (or name (gensym))
+             unique (or unique false)]
+         [coll
+          name
+          unique
+          (create-referrer-integrity-constraint (referrer-constraint-name foreign-coll foreign-key name) foreign-coll foreign-key)]))
+     (reduce (fn [acc [k v]]
+               (concat acc (map #(assoc % :coll k) v))) []
+               (zipmap (keys meta-model) (map :foreign-key-constraints (vals meta-model))))))))
 
 (defn- create-collection [collection referential-integrity-constraints]
   (let [fn-constraint-factory 
@@ -148,15 +148,27 @@
           {:unique-key (create-unique-key-constraint)})
         fn-index-factory 
         (fn [collection]
-          (reduce
-           (fn [acc index]
-             (let [name (or (:name index) (gensym))]
-               (assoc acc 
-                 name
-                 (let [{:keys [unique attributes]} index]
-                   (create-attribute-index name unique attributes)))))
-           {}
-           (:indexes collection)))]
+          (persistent!
+           (reduce
+            (fn [acc index]
+              (let [name (or (:name index) (gensym))]
+                (assoc! acc 
+                  name
+                  (let [{:keys [unique attributes]} index]
+                    (create-attribute-index name unique attributes)))))
+            (transient {})
+            (:indexes collection))))
+        ;; Optimized merge using transient accumulation
+        fn-merge-constraints
+        (fn [index-map constraint-map ric-map]
+          (persistent!
+           (reduce-kv
+            (fn [acc k v] (assoc! acc k v))
+            (reduce-kv
+             (fn [acc k v] (assoc! acc k v))
+             (transient index-map)
+             constraint-map)
+            ric-map)))]
     
     (#(if (:evictor collection) (assoc % :evictor (create-proxy (:evictor collection) (:evictor-delay collection))) %)
      {:running (ref (bigint 0))
@@ -164,17 +176,18 @@
       :name (:name collection)
       :data (ref (sorted-map))
       :constraints (ref 
-                    (merge 
+                    (fn-merge-constraints
                      (fn-index-factory collection) 
                      (fn-constraint-factory collection) 
-                     (reduce 
-                      (fn [acc [coll constraint]]
-                        (if 
-                            (= (:name collection) coll)
-                          (assoc acc (.name constraint) constraint)
-                          acc))
-                      {}
-                      referential-integrity-constraints)))})))
+                     (persistent!
+                      (reduce 
+                       (fn [acc [coll constraint]]
+                         (if 
+                             (= (:name collection) coll)
+                           (assoc! acc (.name constraint) constraint)
+                           acc))
+                       (transient {})
+                       referential-integrity-constraints))))})))
 
 (defn add-collection 
   "adds a collection with spec to the context [ctx]. returns the collection itself. Don't forget to call start on the respective evictor channel"

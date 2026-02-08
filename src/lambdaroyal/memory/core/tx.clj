@@ -18,6 +18,12 @@
 (declare ^{:dynamic true :doc "thread-local hierarchial datastructure that maps collections to map', where map' associates an attribute k to a function 
 (λ [user-scope-tuple] -> [v' c]) that can map the value of attribute k to the value v' if necessary. If the calculation was necessary the c denotes true. If and only if there was any calculation necessary then the user-scope-tuple will contain an association vlicCalculated: xs where x:xs is an attribute a value was calculated before."} *calculated-field-lambdas*)
 
+;;thread-local bulk-mode flag for optimized batch loading
+(declare ^{:dynamic true :doc "When bound to true, enables bulk loading optimizations that defer index building"} *bulk-mode*)
+
+;;thread-local storage for bulk loading - collects index entries to be applied at flush time
+(declare ^{:dynamic true :doc "Volatile map of {index-name -> vector of [unique-key coll-tuple]} for deferred index updates"} *bulk-index-entries*)
+
 (defmacro with-calculated-field-lambdas [lambdas & body]
   `(if (bound? #'*calculated-field-lambdas*)
      (do
@@ -52,10 +58,13 @@
         (reset! (:gtid coll) gtid)))))
 
 (defn create-tx
-  "creates a transaction upon user-scope function like select, insert, alter-document, delete can be executed. Iff an eviction channel is assigned to a collection then this channel needs to be started otherwise a "
+  "creates a transaction upon user-scope function like select, insert, alter-document, delete can be executed. Iff an eviction channel is assigned to a collection then this channel needs to be started otherwise a. 
+   Options:
+   :force - bypass evictor startup check
+   :bulk-mode - enable bulk loading optimizations (defers index building until flush-bulk is called)"
   [ctx & opts]
   (let [opts (apply hash-map opts)
-        {:keys [force]} opts]
+        {:keys [force bulk-mode]} opts]
     (do
       (if-not force
         (doseq [coll (vals @ctx)]
@@ -63,7 +72,7 @@
             (if-not
              (.started? eviction-proxy)
               (throw (IllegalStateException. (format "eviction channel for collection %s is not yet started." (:coll-name coll))))))))
-      {:context ctx})))
+      {:context ctx :bulk-mode (boolean bulk-mode)})))
 
 (def ^:const constraint-appl-domain
   "donotes database actions suitable for certain types of domains"
@@ -191,6 +200,18 @@
   [value attributes]
   (vec (map #(get value %) attributes)))
 
+(defn bulk-mode? 
+  "Returns true if bulk-mode is currently active"
+  []
+  (and (bound? #'*bulk-mode*) *bulk-mode*))
+
+(defn- bulk-collect-index-entry!
+  "Collects an index entry for deferred bulk processing. Called during bulk-mode inserts."
+  [index-name unique-key coll-tuple]
+  (when (bound? #'*bulk-index-entries*)
+    (let [entries (get @*bulk-index-entries* index-name [])]
+      (vswap! *bulk-index-entries* assoc index-name (conj entries [unique-key coll-tuple])))))
+
 (defn- create-unique-key-for-comp  [start-test key primary-key-is-string]
   (cond
     (= (type start-test) (type >)) (create-unique-stop-key key primary-key-is-string)
@@ -260,22 +281,28 @@
   (application [this] #{:insert :delete})
   (precommit [this ctx coll application primary-key value]
     (if (= :insert application)
-      (let [index-attr-value-seq (attribute-values value attributes)
-            unique-key (create-unique-key (.this this) index-attr-value-seq primary-key)]
-        (if unique
-          (if-let [match (first (.find-without-stop this >= index-attr-value-seq))]
-            (if (= index-attr-value-seq (attribute-values (-> match last deref) attributes))
-              (throw (create-constraint-exception coll primary-key (format "unique index constraint violated on index %s when precommit value %s" attributes value)))))))))
+      ;; Skip unique constraint check in bulk mode - will be validated at flush time
+      (when-not (bulk-mode?)
+        (let [index-attr-value-seq (attribute-values value attributes)
+              unique-key (create-unique-key (.this this) index-attr-value-seq primary-key)]
+          (if unique
+            (if-let [match (first (.find-without-stop this >= index-attr-value-seq))]
+              (if (= index-attr-value-seq (attribute-values (-> match last deref) attributes))
+                (throw (create-constraint-exception coll primary-key (format "unique index constraint violated on index %s when precommit value %s" attributes value))))))))))
   (postcommit [this ctx coll application coll-tuple]
     (cond
       (= :insert application)
-      (let [this (.this this)
+      (let [this' (.this this)
             user-value (-> coll-tuple last deref)
             primary-key (-> coll-tuple first)
             user-key (attribute-values user-value attributes)
-            unique-key (create-unique-key this user-key primary-key)]
+            unique-key (create-unique-key this' user-key primary-key)]
         (alter (-> coll-tuple last get-idx-keys) assoc name unique-key)
-        (alter (:data this) assoc unique-key coll-tuple))
+        (if (bulk-mode?)
+          ;; In bulk mode, collect entries for deferred batch insertion
+          (bulk-collect-index-entry! name unique-key coll-tuple)
+          ;; Normal mode - immediate index update
+          (alter (:data this') assoc unique-key coll-tuple)))
       (= :delete application)
       (if coll-tuple
         (let [this (.this this)
@@ -445,6 +472,54 @@
 
 (defn insert-raw "ONLY FOR INTERNAL PURPOSE" [tx coll-name key value]
   (insert' tx coll-name key (dissoc value :vlicCalculated)))
+
+(defn flush-bulk-indexes
+  "Flushes collected bulk index entries into their respective indexes. 
+   Call this after completing bulk inserts to finalize index construction.
+   This builds each index sorted-map in a single operation using `into` which is 
+   more efficient than incremental `assoc` operations during bulk loading."
+  [tx]
+  (when (bound? #'*bulk-index-entries*)
+    (let [ctx (-> tx :context deref)
+          entries @*bulk-index-entries*]
+      (doseq [[coll-name coll] ctx]
+        (doseq [[_ constraint] (-> coll :constraints deref)]
+          (when (instance? AttributeIndex constraint)
+            (let [index-name (.name constraint)
+                  index-entries (get entries index-name)]
+              (when (seq index-entries)
+                ;; Build sorted-map in one operation using into
+                (let [idx-data (-> constraint .this :data)]
+                  (alter idx-data into index-entries))))))))))
+
+(defmacro with-bulk-mode
+  "Executes body with bulk-mode enabled. Defers index building until the end of the block.
+   Usage: (with-bulk-mode [tx] (doseq [item items] (insert tx :coll key item)))
+   The macro automatically flushes bulk indexes at the end."
+  [[tx] & body]
+  `(binding [*bulk-mode* true
+             *bulk-index-entries* (volatile! {})]
+     (let [result# (do ~@body)]
+       (flush-bulk-indexes ~tx)
+       result#)))
+
+(defn insert-bulk
+  "Bulk insert multiple documents into a collection. More efficient than repeated insert calls.
+   Accepts a sequence of [key value] pairs. Returns the count of inserted documents.
+   Usage: (insert-bulk tx :coll [[k1 v1] [k2 v2] ...])
+   
+   This function uses bulk-mode internally to defer index construction, building
+   indexes in a single pass at the end for better performance."
+  [tx ^clojure.lang.Keyword coll-name entries]
+  {:pre [(contains? (-> tx :context deref) coll-name)]}
+  (binding [*bulk-mode* true
+            *bulk-index-entries* (volatile! {})]
+    (let [count' (atom 0)]
+      (doseq [[key value] entries]
+        (insert' tx coll-name key (decorate-with-gtid (dissoc value :vlicCalculated)))
+        (swap! count' inc))
+      (flush-bulk-indexes tx)
+      @count')))
 
 
 (defn- alter-index
